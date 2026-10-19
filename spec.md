@@ -1,152 +1,398 @@
-# Task: global `create-issue` command (PowerShell) with self-tests
+# issues: specification of a problem and decision record system (draft)
 
-Build a small command intended to live on the system `PATH`. When invoked from a project root, it creates one issue file in that project's `./issues/` directory, plus a dependency-free test script. Platform is Windows 11; the script must rely only on what ships with PowerShell and .NET. On Linux, the script uses common, generally available libraries to do the same.
+This file is a draft. The Chinese version is `spec.zh-CN.md`; the two are kept in sync. The specification of the existing `create-issue.ps1` is `spec-create-issue.md`.
 
-Follow the repository's `AGENTS.md` (naming, UTF-8 without BOM, LF line endings, English identifiers and comments). If anything below is ambiguous or conflicts with `AGENTS.md`, stop and ask before coding. Do not change any file other than the three listed under Deliverables. Do not run `git add` or `git commit`.
+## 0. Positioning
 
-## 1. Command line
+### Motivation
 
-```
-create-issue <slug> [date]
-```
+The goal is to include a lightweight issue mechanism in the project's own source files and make it the single source of truth for issues, so that the project files themselves are more complete.
 
-- Implemented as `create-issue.ps1`, which is reached through the system `PATH` (directly or through a shim script) and invoked as `create-issue <slug> [date]`.
-- Tests may invoke the script explicitly as `pwsh -NoProfile -File <path-to-create-issue.ps1> <slug> [date]`, but its behavior must be independent of the script's installation directory, except that the default template (section 4) is read from that directory.
-- `slug` is required and is always the first argument. It is a short lowercase ASCII description that keeps file listings readable. Rule: `^[a-z0-9]+(-[a-z0-9]+)*$`, at most 60 characters. Anything else (uppercase, underscore, space, non-ASCII, leading/trailing/double hyphen, empty, too long) is rejected, never silently fixed. An all-digit slug is valid; the first argument is never interpreted as a date.
-- `date` is optional and is the second argument. It is digits only, no separators, interpreted as **UTC**. Accepted lengths:
+The issue features of platforms such as GitHub are mature, but the issues live on a website: they are unreachable without the platform, and the project's own files do not show them. A cloned repository does not reveal which problems exist or which decisions were made, and moving to another platform needs a separate export. With issues stored as files in the repository, they are cloned, branched, merged and reviewed together with the code and share the same git history; platforms and third-party tools are only an optional presentation layer and place for discussion.
 
-  | length | layout | missing fields |
-  | :- | :- | :- |
-  | 8 | `YYYYMMDD` | time is `00:00:00.000` |
-  | 12 | `YYYYMMDDHHMM` | seconds and ms are 0 |
-  | 14 | `YYYYMMDDHHMMSS` | ms is 0 |
-  | 17 | `YYYYMMDDHHMMSSfff` | none |
+### Positioning: a record of problems and decisions
 
-- Without `date`, the opened time is the current UTC time truncated to milliseconds.
-- Invalid input (missing or invalid slug; in `date`: non-digit characters, any other length, an impossible calendar date such as month 13 or `20250230`, hour 24, a year before 1970; more than two arguments) is a usage error: nothing is written (not even the `issues/` directory), a one-line message goes to stderr, exit code 2.
-- On success: print only the created file name (for example `ggkpa773-short-slug.md`) on stdout and exit 0. Runtime errors (cannot write, collision with an explicit date) go to stderr with exit code 1.
+The system is positioned as a **record of problems and decisions**, not as an issue tracker:
 
-## 2. Where the file goes
+- GitHub and similar platforms keep collecting problems and hosting discussion, notifications and assignment; this system does not replace them.
+- The issue files in the repository hold the authoritative conclusions: what the problem is, what was proposed, and what was decided.
+- This matches the practice of ADRs (Architecture Decision Records), Rust RFCs and Python PEPs: discussion happens elsewhere, and the repository keeps only the settled content.
+- The companion tool `issue-github` (section 10) is the bridge between the two.
 
-- The file is created under the **current working directory**, as `./issues/<id>-<slug>.md`. The current directory is the project root for this command. Do not write in the script's directory, search for a repository root, or call git.
-- Create `./issues/` when it does not exist. This is the only project-local directory the command may create.
-- Never overwrite an existing file. Create with exclusive semantics (`[System.IO.FileMode]::CreateNew`) and treat an `IOException` for an existing file as a collision.
+### Overview
 
-## 3. The id
+A lightweight but complete, file- and command-line-based record of problems and decisions:
 
-`id` is an 8-character digest of the opened time, chosen so that issues created close together look completely different (no shared prefix). The slug does not take part in the id.
+- Issues are Markdown files in the project's `issues/` directory, versioned in git together with the code. **The files are the single source of truth**: there is no separate database and no "rendered output".
+- The command-line program `issue` (written in Rust) creates, lists, shows, modifies and checks issues, and provides structured data to third parties as JSON.
+- An issue file records only the **current** statement; how the statement changes over time is shown by git history.
+- GUIs, web UIs, the discussion itself and its original archive are implemented by third parties and are outside this system.
+- The companion tool `issue-github` (section 10) imports issues from GitHub and syncs the discussion on GitHub into `## 讨论经过`; the three sections are still rewritten by a person or an AI assistant. It is a separate program; `issue` itself never accesses the network.
 
-Algorithm, exactly:
+The existing `create-issue.ps1` stays unchanged as the interim implementation of `issue new`; its behavior is defined by `spec-create-issue.md`. Whether to retire it is decided after `issue` is complete. The previously planned `create-issue.sh` is no longer needed: `issue` also supports Linux.
 
-1. `ms` = Unix epoch milliseconds of the opened instant (UTC), an integer.
-2. Input bytes = the ASCII decimal text of `ms`, no padding, no separators (`1792281811121`).
-3. Digest = SHA-256 of those bytes; take the first 5 bytes (40 bits) as a big-endian integer.
-4. Split the 40 bits into eight 5-bit groups, most significant first; map each group to this alphabet (Crockford base32, lowercase, without `i l o u`):
+### Design trade-offs
 
-   `0123456789abcdefghjkmnpqrstvwxyz`
+- **Why not a single JSON/YAML database file**: with all issues in one file, parallel branches that change different issues easily conflict on merge; the body is multi-line free text, and inside JSON its diff is hard to review; and if Markdown were rendered from the database, edits made directly in the Markdown would be lost on the next render.
+- **Why one Markdown file per issue rather than a YAML file**: YAML is also designed for people to read and write, but Markdown is rendered as a document by platforms such as GitHub and by local Markdown readers, while YAML has no such rendering support. The body is Markdown anyway, so a Markdown file is the most natural container.
+- **Why Markdown is still easy to process structurally**: all structured fields are in the front matter, a strictly limited subset of YAML that is cheap to parse; the body is only split at three fixed level-2 headings. Third parties do not need to parse anything themselves; they can call `issue ... --json`.
 
-5. Concatenate: 8 characters.
+## 1. Terms
 
-The `opened` field is written as ISO-8601 UTC with exactly three fractional digits and a trailing `Z`: `2026-10-18T00:03:31.121Z`. The `id` must be derivable from `opened`; that is the integrity rule later tooling will check.
+- **Project root**: the current working directory, or the directory given by `-C <dir>`. No upward search, no git calls.
+- **Issues directory**: `<project root>/issues/`.
+- **Issue file**: a `.md` file in the issues directory that follows the naming rule in section 3.2.
+- **Project template**: `issues/template.md`; it is not an issue file.
+- **The three sections**: problem, proposal, decision.
+- **Closed statuses**: `fixed`, `rejected`, `wontfix`. **Active statuses**: `open`, `accepted`.
 
-### Collision handling
+## 2. Content principles
 
-A collision means: `./issues/` already contains a file whose name starts with `<id>-` and ends with `.md` (any slug, including the slug being created), or a file named `<id>.md`. The id is the identity, so a different slug does not avoid a collision. `template.md` is never an issue file and never counts as a collision.
+- Together, problem, proposal and decision must reflect the **final** decision: how the problem was finally understood, what was proposed, and what was decided.
+- Rejected proposals may stay in the issue file, for example as alternatives that were considered, with the reasons for rejecting them, listed in proposal, provided that reading the three sections makes the final decision clear and a rejected alternative cannot be mistaken for the adopted one.
+- The discussion process, comments and votes are not written into the three sections. Their archive belongs to third-party systems, which refer to an issue by its id.
+- After the three sections there may be extra sections (section 3.4), such as `## 讨论经过` written and synced by `issue-github`. `issue` does not read, check or modify the content of extra sections; whether to keep them is the author's choice.
+- Issues that were rejected (`rejected`) or will not be handled (`wontfix`) are kept as well, never deleted.
+- When a statement changes, the corresponding section is rewritten in place; no chronological "Update: ..." entries are appended. Every version of the statement stays in git history.
 
-- Explicit `date` given and a collision: error, exit 1, the message names the existing file, nothing changed.
-- No `date` given and a collision: add 1 ms to the opened time, recompute the id, retry. Give up with exit 1 after 1000 attempts.
+## 3. Storage format
 
-## 4. File content and templates
+### 3.1 Encoding
 
-The project-local template is `./issues/template.md`, resolved from the current working directory. If it exists, copy its content to the new issue after replacing `{{id}}` and `{{opened}}`.
+- UTF-8 without BOM, LF line endings. Files written by `issue` always satisfy this.
+- CRLF is tolerated on read (treated as LF), but `check` reports CR and BOM as errors.
 
-If `./issues/template.md` does not exist, use the default template `default-template.md`, located in the same directory as `create-issue.ps1` (resolved through `$PSScriptRoot`, never through the current directory). It is a plain Markdown file, UTF-8 without BOM, LF, and is read with an explicit UTF-8 encoding, never through a code page; it is not embedded in the script. The default template is in English. A project that wants another language, or other sections, supplies its own `./issues/template.md` in that language. When it is needed but missing, that is a runtime error: exit 1, the message names the missing file, and nothing is written (not even the `issues/` directory). When `./issues/template.md` exists, `default-template.md` is not needed.
+### 3.2 File name
 
-Read a template (project or default) as UTF-8, normalize CRLF to LF, replace `{{id}}` and `{{opened}}`, and write the result as UTF-8 **without BOM**, LF only. `template.md` is never an issue file and must not be modified by this command.
+- `issues/<id>-<slug>.md`. `id` is described in section 4; the `slug` rule is the one in `spec-create-issue.md`: `^[a-z0-9]+(-[a-z0-9]+)*$`, at most 60 characters.
+- The slug only keeps file listings readable and may be renamed; the id is the identity and never changes.
+- The issues directory should contain nothing but issue files and `template.md`; `check` warns about other entries, and the other commands ignore them.
 
-The `opened` field is always filled, whether or not the template writes `{{opened}}`. After the placeholders are replaced, if the content starts with a front matter block (a first line `---` up to the next line `---`) and that block contains a line starting with `opened:`, the first such line becomes `opened: <opened>` with the computed time. A trailing YAML comment on that line (whitespace followed by `#` and the rest of the line) is kept. This applies when the value is `{{opened}}`, empty, or anything else. Lines outside the front matter are never touched, and no `opened:` line is added when the front matter has none.
+### 3.3 Front matter
 
-Content of `default-template.md` (exactly):
+A file starts with front matter: a first line `---` up to the next line `---`. The keys, their order and their syntax are fixed as follows (the `labels` and `remote` lines may be omitted; all others are required):
 
 ```
 ---
-id: {{id}}
-opened: {{opened}}
-title:
-status: open        # open | accepted | fixed | rejected | wontfix
-fixed-in: []        # commit IDs, backfilled at version commit time
+id: <id>
+opened: <opened>
+title: <title>
+status: <status>
+fixed-in: [<commit>, ...]
+labels: [<label>, ...]
+remote: <remote>
+---
+```
+
+- One key per line, in this fixed order; no other keys, no blank lines, no comment lines.
+- Each value may be followed by a YAML end-of-line comment (whitespace followed by `#` up to the end of the line). When `issue` changes a value, it keeps that line's comment.
+- The front matter must be valid YAML and use only the subset defined below, so that third parties get the same result with any YAML parser:
+  - `id`: 8 characters, alphabet as in section 4.
+  - `opened`: `YYYY-MM-DDTHH:MM:SS.fffZ`, UTC, exactly three fractional digits.
+  - `title`: a single line of text, may be empty. On read, a YAML plain scalar or a double-quoted string (JSON escape rules) is accepted. On write, it is written as a plain scalar when all of the following hold, and as a double-quoted string otherwise: the first character is not one of `` -?:,[]{}#&*!|>'"%@` ``; it contains neither `: ` nor ` #`; it has no leading or trailing whitespace. Single-quoted strings are not supported.
+  - `status`: one of `open`, `accepted`, `fixed`, `rejected`, `wontfix`.
+  - `fixed-in`: a flow sequence of commit IDs of 7 to 40 lowercase hexadecimal digits, without duplicates. An empty list is written `[]`.
+  - `labels`: a flow sequence of elements that follow the slug rule, without duplicates, in insertion order.
+  - `remote`: the issue's counterpart on a remote platform; the value is its full URL, `https://github.com/<owner>/<repo>/issues/<number>`, for example `https://github.com/serialport/node-serialport/issues/3149`. Only GitHub is supported as a remote for now: the scheme must be `https`, the host must be `github.com`, and there is no trailing `/`, query or `#` fragment. `<owner>` consists of ASCII letters, digits and hyphens; `<repo>` consists of ASCII letters, digits, `.`, `_` and `-`; `<number>` is a positive integer without a leading 0. The same remote must not appear in two issue files; `<owner>` and `<repo>` are compared case-insensitively. `remote` is only data: `issue` never accesses it.
+- There are no time fields such as `updated` or `closed`: git history provides that information.
+
+### 3.4 Body
+
+- The front matter is followed by one blank line and then by three **required** level-2 headings (lines starting with `## `), for problem, proposal and decision in that order. **Extra sections** may follow.
+- Sections are identified by **order**; the heading text is free and its language is chosen by the project template, for example `## Problem` or `## 问题描述`.
+- Only blank lines may precede the first level-2 heading. The content of the three sections must not contain level-1 headings; level-3 and deeper headings are allowed. Lines inside fenced code blocks (` ``` ` or `~~~`) are not headings.
+- The content of each of the three sections is the lines between its heading and the next level-2 heading (or the end of the file), with leading and trailing blank lines removed. The content may be empty.
+- **Extra sections**: everything from the line of the fourth level-2 heading to the end of the file. `issue` treats it as opaque text: it does not parse its headings or structure, does not check its content, does not include it in JSON output, and `modi` keeps it byte for byte. The encoding rules of section 3.1 still apply to the whole file.
+
+### 3.5 Example
+
+```
+---
+id: ggkpa773
+opened: 2026-10-18T00:03:31.121Z
+title: Start fails when one server cannot bind
+status: accepted        # open | accepted | fixed | rejected | wontfix
+fixed-in: []            # commit IDs, backfilled at version commit time
+labels: [startup]
 ---
 
 ## Problem
 
+When one of several servers fails to bind, the others keep running.
+
 ## Proposal
 
+Stop all started servers and report every failure.
+
 ## Decision
+
+Accepted: implement the proposal in 0.4.
 ```
 
-The slug is not a title: it appears only in the file name and is never written into the file content.
+## 4. id and opened
 
-## 5. Reference test vectors
+The id algorithm, the format of `opened`, the parsing of the date argument, collision handling and the bump rule, and all reference test vectors are exactly those of sections 1, 3 and 5 of `spec-create-issue.md`; `issue` must pass the same vectors. In short:
 
-These were computed with an independent Python implementation of section 3. The PowerShell result must match them exactly; if it does not, the PowerShell code is wrong, not the table.
+- `ms` = the Unix epoch milliseconds of the opened time; take SHA-256 of its ASCII decimal text, take the first 40 bits, and map them in groups of 5 bits to `0123456789abcdefghjkmnpqrstvwxyz`, giving 8 characters.
+- The id must be derivable from `opened` and equal the first 8 characters of the file name. This is the core integrity rule checked by `check`.
+- A collision is defined by the ids already present in the issues directory, independent of the slug.
 
-| epoch ms | opened | id |
-| -: | :- | :- |
-| 0 | 1970-01-01T00:00:00.000Z | `bzpepsqz` |
-| 1 | 1970-01-01T00:00:00.001Z | `de3b4wzz` |
-| 1792281811121 | 2026-10-18T00:03:31.121Z | `ggkpa773` |
-| 1792281811122 | 2026-10-18T00:03:31.122Z | `kymnq2en` |
-| 1792281811123 | 2026-10-18T00:03:31.123Z | `ae16cpvt` |
-| 1792281812121 | 2026-10-18T00:03:32.121Z | `m5s8m0xw` |
-| 1792281871121 | 2026-10-18T00:04:31.121Z | `3q0vprjn` |
+## 5. Templates
 
-Date arguments:
+- When an issue is created, `issues/template.md` is used if it exists, otherwise the built-in default template. The default template is the content of this repository's `default-template.md` (English), embedded into `issue` at compile time, so nothing external is needed at run time.
+- Reading the template, replacing the placeholders `{{id}}` / `{{opened}}`, and always filling the `opened` field follow section 4 of `spec-create-issue.md`.
+- The generated content must pass every error check of `check`; otherwise nothing is written, the exit code is 1, and the message points out the problem in the template.
+- A project that needs another language or other heading text supplies its own `issues/template.md`. The three required level-2 headings must not be missing or reordered; a template may carry extra sections after them.
 
-| argument | opened | id |
-| :- | :- | :- |
-| `20261018` | 2026-10-18T00:00:00.000Z | `jazq3ynk` |
-| `202610180823` | 2026-10-18T08:23:00.000Z | `mz0rpmrq` |
-| `20261018082311` | 2026-10-18T08:23:11.000Z | `amck341k` |
-| `20261018082311121` | 2026-10-18T08:23:11.121Z | `tv5eqvx6` |
-| `20240229` | 2024-02-29T00:00:00.000Z | `85gyraxj` |
-| `19700101` | 1970-01-01T00:00:00.000Z | `bzpepsqz` |
+## 6. Command line
 
-Invalid `date` values, used after a valid slug (must exit 2, create nothing): `2026101` (7 digits), `2026101808231` (13 digits), `20251301`, `20250230`, `20261018240000`, `abc`, `20261018x`, `2026-10-18`, `""` (empty string).
+### 6.1 Common conventions
 
-Invalid slugs (must exit 2, create nothing): no arguments at all, `""`, `Fix-Bug`, `fix_bug`, `fix bug`, `-fix`, `fix-`, `fix--bug`, a slug with a non-ASCII character, a slug of 61 characters. Valid slugs: `a`, `fix-bug`, `x2`, `20261018`, a slug of exactly 60 characters. A third argument is also invalid.
+```
+issue [-C <dir>] <command> [args]
+```
 
-## 6. Constraints
+- All commands read and write only the issues directory, never call git, and never access the network.
+- Exit codes: `0` success; `1` runtime error, or errors found by `check`; `2` usage error (unknown command or option, missing or invalid argument). Nothing is written on a usage error.
+- Errors and warnings go to stderr, one per line, in English. Normal output goes to stdout.
+- Arguments must be valid UTF-8; otherwise it is a usage error.
+- **Issue reference `<ref>`**: a full id, a unique id prefix (at least 2 characters), an issue file name, or an issue file path. When nothing matches or a prefix is ambiguous, the exit code is 1 and the message lists all candidate file names.
 
-- Must run **unchanged** on PowerShell 7+ (`pwsh`) and Windows PowerShell 5.1 (`powershell`). Avoid APIs missing in 5.1 (for example `SHA256.HashData`; use `SHA256.Create().ComputeHash`).
-- Script files are ASCII-only, UTF-8 without BOM, LF, so that Windows PowerShell 5.1, which reads a BOM-less script through the system code page, parses them the same way as `pwsh`. Non-ASCII text (such as headings in another language) belongs in a project's `./issues/template.md`, never in a script.
-- No modules, no external tools, no network, no calls to `git`, no Pester. The script must not change the execution policy or any machine setting.
-- Structure the script so the logic can be tested without launching a process: functions for (a) validating a slug, (b) parsing the date argument into epoch ms, (c) computing the id from epoch ms, (d) formatting `opened`, (e) creating the file given a slug, an opened time and a bump-allowed flag. The command-line entry runs only when the script is executed, not when it is dot-sourced (`. ./create-issue.ps1`); guard it with `$MyInvocation.InvocationName`.
-- Follow `AGENTS.md` naming for identifiers (snake_case variables and functions, UPPER_SNAKE_CASE constants), even where it differs from PowerShell's Verb-Noun convention.
+### 6.2 `issue new <slug> [date] [--title <text>] [--label <label>]... [--json]`
 
-## 7. Tests
+- `slug`, `date`, the id, collision handling and templates follow sections 4 and 5 and `spec-create-issue.md`.
+- `--title` sets `title`; `--label` may be repeated and sets `labels`; without labels the line is not written.
+- stdout: the created file name; with `--json`, the single issue object of section 7.
 
-`create-issue.tests.ps1`: a plain script with a tiny assertion helper, no Pester. It dot-sources `create-issue.ps1`, works in a fresh temporary directory, cleans up after itself, prints one line per failed check and a summary, and exits 0 only if every check passed. Cover at least:
+### 6.3 `issue list [--status <status>]... [--label <label>]... [--all] [--json]`
 
-1. Every id vector in section 5 (function level).
-2. Every valid and invalid slug, every date-argument vector and every invalid date (function level), plus exit code 2 and no `issues/` directory created through a child process for the invalid cases.
-3. End to end through a child process (`pwsh`, and `powershell` when present) from the temporary project directory with a slug and an explicit date: exactly one file `issues/<id>-<slug>.md` is created; stdout is exactly that file name; exit code 0; the front matter `id` equals the first 8 characters of the file name; recomputing the id from `opened` gives the same id; `status: open`; the three headings are present; the bytes have no BOM and no CR; nothing new appears in the script's own directory.
-4. Running the same explicit date twice with different slugs: the second run exits 1, names the first file in stderr, creates nothing, and the first file's bytes are unchanged.
-5. No date argument: a file is created, `opened` is within 5 seconds of the current UTC time, id matches `opened`.
-6. Bump rule at function level: pre-create `issues/<id>-other.md` for ms `M`, call the create function for `M` with a new slug and bump allowed; the result is the file for `M + 1`, and the original file is untouched. With bump not allowed, it fails.
-7. The script files are ASCII-only, have no BOM and no CR; `default-template.md` has no BOM and no CR.
-8. A pre-existing unrelated project file is never modified.
-9. Template selection: with no `issues/template.md`, the issue uses the exact content of `default-template.md`, and that content equals section 4 (checked against an expected value written in the test, not read from the file). With `create-issue.ps1` copied alone into another directory: without a project template the run exits 1, names `default-template.md` in stderr and creates nothing; with a project template it succeeds. With an `issues/template.md` containing distinct UTF-8 content and both placeholders, the created issue uses that content with placeholders replaced; `template.md` itself is unchanged. With a project template whose front matter has `opened:` without `{{opened}}` (an empty value, and another value followed by a comment), the created issue's `opened:` line carries the computed time and keeps the comment, and an `opened:` line outside the front matter is unchanged.
+- By default only issues in an active status (`open`, `accepted`) are listed; `--all` lists all; `--status` may be repeated, filters by union, and overrides the default filter.
+- `--label` may be repeated; an issue must have all given labels.
+- Sorted by `opened`, ascending.
+- Text output is one line per issue: `<id>  <status>  <date part of opened>  <title>`, columns aligned; an empty `title` is shown as `(untitled)`.
+- Issue files that cannot be parsed are reported one by one on stderr and skipped; the rest is printed as usual, and the exit code is 1 at the end.
 
-## 8. Deliverables
+### 6.4 `issue show <ref> [--section <name>] [--json]`
 
-Three files:
+- By default the whole issue file is printed as is, including extra sections.
+- `--section problem|proposal|decision`: prints only that section's content (as defined in section 3.4), without the heading.
+- `--json`: prints the single issue object of section 7, including the three sections.
 
-- `create-issue.ps1`, in the project root directory
-- `default-template.md`, in the project root directory, next to `create-issue.ps1`
-- `create-issue.tests.ps1`, in the `test/` directory under the project root; it locates `create-issue.ps1` in its parent directory
+### 6.5 `issue modi <ref> [options]...`
 
-`issue-template.md` is intentionally no longer a deliverable: projects optionally supply `./issues/template.md`, while `default-template.md` provides the fallback template. When finished, run the test script under `pwsh` and, if available, under `powershell`, and report the actual results. If Windows PowerShell 5.1 is not available, say so instead of claiming it passes.
+Modifies one issue. At least one option is required; otherwise it is a usage error.
 
-## 9. Out of scope
+| Option | Effect |
+| :- | :- |
+| `--title <text>` | replaces `title` |
+| `--status <status>` | replaces `status`; no transition order is enforced |
+| `--slug <slug>` | changes the slug in the file name; the id stays |
+| `--fixed-in-add <commit>`, `--fixed-in-remove <commit>` | adds or removes `fixed-in` elements, repeatable; adding an existing element or removing a missing one is not an error |
+| `--label-add <label>`, `--label-remove <label>` | adds or removes `labels` elements, repeatable; the `labels` line is removed when the list becomes empty and added (without a comment) on the first addition |
+| `--remote <remote>`, `--remote-clear` | sets or removes `remote`; the line is added (without a comment) when first set |
+| `--problem <source>`, `--proposal <source>`, `--decision <source>` | **replaces the whole** section with new content |
 
-A `list` command, id-prefix resolution, slug generation from a title, renaming slugs, validation of existing issue files, status changes, `fixed-in` backfill, git operations, and edits to skills or `AGENTS.md`.
+- `<source>`: `-` reads from stdin, `@<path>` reads from a file (UTF-8), any other value is literal text. CRLF in the content is normalized to LF, and leading and trailing blank lines are removed. An empty string clears the section. The new content must not contain level-1 or level-2 headings; otherwise it is a usage error. Extra sections are not affected.
+- `id` and `opened` cannot be modified.
+- The target file must first pass every error check of `check`; otherwise the modification is refused (exit code 1, errors listed), so that a damaged file is not written further.
+- Only lines that need to change are changed; unchanged lines and extra sections stay byte for byte the same; changing a value keeps the end-of-line comment; heading lines stay unchanged.
+- The modification is atomic: either all options take effect or none does. The result is written to a temporary file in the issues directory and then replaces the original; when changing the slug and the new file name already exists, it is an error, exit code 1, and nothing is changed.
+- stdout: the file name after the modification (the new name after a slug change).
+
+### 6.6 `issue check [<ref>...] [--json]`
+
+Checks the given issues, or, when none is given, all issues in the issues directory and `template.md`.
+
+Errors:
+
+- Encoding: a BOM or a CR.
+- The file name does not follow section 3.2; two files share an id.
+- The front matter structure does not follow section 3.3: missing keys, extra keys, wrong order, invalid values.
+- The id cannot be derived from `opened`, or does not equal the first 8 characters of the file name.
+- `remote` is malformed, or the same remote appears in several files.
+- The body structure does not follow section 3.4.
+- `template.md` produces invalid content after placeholder replacement.
+
+Warnings (do not affect the exit code):
+
+- `title` is empty.
+- The status is `accepted` or a closed status, but decision is empty.
+- The status is not `fixed`, but `fixed-in` is not empty.
+- The issues directory contains entries other than issue files and `template.md`.
+
+Output: one line per finding, `<file>: error|warning: <message>`. The exit code is 1 if there is any error, otherwise 0. Suitable for a pre-commit hook or CI.
+
+## 7. JSON output
+
+This is the stable interface through which third parties read data. Field names are snake_case. Adding a field is not a breaking change; removing a field or changing its meaning increments `schema_version`.
+
+A single issue object:
+
+```json
+{
+  "id": "ggkpa773",
+  "slug": "start-partial-failure",
+  "file": "issues/ggkpa773-start-partial-failure.md",
+  "opened": "2026-10-18T00:03:31.121Z",
+  "title": "Start fails when one server cannot bind",
+  "status": "accepted",
+  "fixed_in": [],
+  "labels": ["startup"],
+  "remote": "https://github.com/example/server/issues/42",
+  "sections": {
+    "problem": "When one of several servers fails to bind, the others keep running.",
+    "proposal": "Stop all started servers and report every failure.",
+    "decision": "Accepted: implement the proposal in 0.4."
+  }
+}
+```
+
+- `file` is the path relative to the project root, separated by `/`. When the `labels` line is omitted, `labels` is `[]`; when the `remote` line is omitted, `remote` is `null`.
+- `show --json` / `new --json`: `{"schema_version": 1, "issue": <object>}`.
+- `list --json`: `{"schema_version": 1, "issues": [<object>...]}`, objects without `sections`.
+- `check --json`: `{"schema_version": 1, "findings": [{"file": ..., "level": "error"|"warning", "message": ...}]}`.
+- Output is UTF-8; non-ASCII characters are not escaped.
+
+## 8. Relationship with git
+
+- **Authoritative version**: the issue files on the default branch (for example `main`) are authoritative. Changes to issue files on other branches are only proposals and take effect when merged into the default branch. Third parties reading authoritative data should read the default branch.
+- `issue` only works on the files in the current working directory; it neither knows nor checks the current branch. Which branch it runs on is the user's responsibility.
+- `issue` never calls git and never commits. When to commit is decided by people or third parties.
+- The issue file in each commit is the issue's statement at that point in time. To see how an issue evolved: `git log --follow -p -- issues/<id>-<slug>.md`. Changing the slug is a file rename that git's rename detection follows; the id is the stable lookup key.
+- When a statement changes, it is recommended to commit the issue file change on its own, or together with the code that implements it, to keep history readable. The commit message format is outside this specification.
+- `fixed-in` is backfilled by the version commit process with `issue modi --fixed-in-add`.
+
+## 9. Boundary with third parties
+
+- Third parties (GUIs, web UIs, discussion systems) read data through `issue ... --json`, or read the files directly according to section 3.
+- Third parties that modify issues should call `issue new` / `issue modi`; files they write directly must pass `issue check`.
+- Discussion, comments and their archive are stored in third-party systems, linked by the issue id, and are not written into the three sections.
+- When a discussion reaches a new conclusion, a third party or a person rewrites the corresponding sections and commits them to git.
+
+## 10. Companion tool: GitHub import and discussion sync
+
+### 10.1 Positioning
+
+- A separate executable `issue-github`, in the same Cargo workspace as `issue`.
+- `import`: reads issues of a target repository from GitHub, creates the corresponding issue files in the current project's issues directory, and writes `remote`.
+- `sync`: reads the discussion on GitHub again according to `remote` and updates `## 讨论经过`.
+- Division of labor: **the tool syncs the discussion; the three sections are still rewritten by a person or an AI assistant.** `import` writes front matter only when it creates a file; `sync` never changes the front matter or the three sections.
+- Only GitHub's read-only REST API is called; nothing on GitHub is ever modified. Only GitHub is supported for now.
+
+### 10.2 Common conventions
+
+- Authentication: the token is read from the environment variable `GITHUB_TOKEN`. It may be unset (public repositories can be read anonymously, with a lower rate limit). The token is never passed as a command-line argument and never appears in any output or file.
+- GitHub's issues API also returns pull requests; they are all skipped.
+- Each file is written atomically on its own. On a network error, an API error or a rate limit, the exit code is 1 and stderr says where processing stopped; files already written are kept, and running again continues.
+- Exit codes as in section 6.1. `--dry-run`: only prints the file names that would be created or modified, writing nothing.
+
+### 10.3 `issue-github [-C <dir>] import <owner>/<repo> [--state open|closed|all] [--number <n>]... [--dry-run]`
+
+- `--state`: filters by state on GitHub, default `all`. `--number`: repeatable, imports only the given issue numbers.
+- When an existing issue file's `remote` points to the same GitHub issue, that issue is skipped and stderr says so.
+- stdout: one line per created file, its file name.
+
+Field mapping:
+
+| GitHub | Issue file |
+| :- | :- |
+| `created_at` | `opened`. GitHub has second precision, so milliseconds are 0 |
+| `title` | `title` |
+| `state` / `state_reason` | `open` → `open`; `closed` with reason `completed` or no reason → `fixed`; `not_planned` → `wontfix`; `duplicate` → `rejected` |
+| `labels` | `labels`. Names are converted with the slug conversion rule below; labels that become empty are dropped with a warning on stderr |
+| Repository and number | `remote`: the issue page URL returned by the API (`html_url`), of the form `https://github.com/<owner>/<repo>/issues/<number>` |
+| Issue body and all comments | the extra section `## 讨论经过` (section 10.5) |
+
+- `fixed-in` is `[]`.
+- Slug conversion rule: lowercase; replace every character other than ASCII letters and digits with a hyphen; collapse consecutive hyphens; strip leading and trailing hyphens; when longer than 60 characters, cut at a hyphen. When the slug converted from `title` is empty (for example a title entirely in Chinese), use `gh-<number>`.
+- The three sections are generated from the template (section 5) and left as the template has them; **their content is not filled in**.
+- The id is computed from `opened`. Issues are processed in ascending GitHub issue number; when the id collides with an existing file, the bump rule adds 1 ms and retries.
+
+### 10.4 `issue-github [-C <dir>] sync [<ref>...] [--dry-run]`
+
+- Without `<ref>`, all issues with a `remote` are synced; with refs, only those, and a ref without a `remote` is an error.
+- For each issue, the issue body and all comments are read from GitHub again and `## 讨论经过` is **regenerated as a whole**:
+  - If the file has no `## 讨论经过`, it is appended at the end of the file.
+  - If it has one, everything from that heading line to the end of the file is replaced.
+- The rest of the file (front matter, the three sections, other extra sections before `## 讨论经过`) stays byte for byte the same.
+- Because it is regenerated as a whole every time, no sync progress has to be recorded; comments added, edited or deleted on GitHub are all reflected. The increment shows up in git diff: content identical to the previous version produces no difference.
+- When the result equals the existing content, the file is not written.
+- When the title, status or labels on GitHub differ from the local ones, this is only reported on stderr and the local fields are not changed: the local file is the authoritative source.
+- The target file must first pass every error check of `issue check`; otherwise it is skipped with an error. When an issue no longer exists on GitHub or is not accessible, an error is reported and the remaining issues are still processed; the exit code is 1 at the end.
+- stdout: one line per modified file, its file name.
+
+### 10.5 The `## 讨论经过` section
+
+The heading text is fixed as `## 讨论经过`, independent of the template's language. The section is managed by `issue-github` and must be at the end of the file; edits the author makes inside it are overwritten by the next `sync`.
+
+```
+## 讨论经过
+
+### @<login> 2026-10-18T00:03:31Z
+
+<issue body>
+
+### @<login> 2026-10-19T08:00:00Z
+
+<comment body>
+```
+
+- The first entry is the issue's own body, followed by all comments in chronological order. Bodies are kept as is, except that CRLF is normalized to LF; an empty body is written as `（空）`.
+- Events such as label changes, assignment and closing are not included, and attachments are not downloaded; attachments and images stay in the bodies as links to GitHub.
+- How `sync` locates `## 讨论经过`: the first line after the three sections whose content is exactly `## 讨论经过`.
+
+### 10.6 Workflow
+
+1. Import with `issue-github import`. The generated files pass every error check of `issue check`; the empty three sections produce warnings.
+2. A person or an AI assistant reads `## 讨论经过` and writes the final decision into the three sections, for example `issue modi <ref> --problem @problem.md --decision @decision.md`.
+3. When there is new discussion on GitHub, run `issue-github sync`, and a person or an AI assistant rewrites the three sections accordingly.
+4. Every change is reviewed through git diff before it is committed; it becomes authoritative once merged into the default branch (section 8).
+5. An issue that no longer needs syncing can be unlinked with `issue modi --remote-clear`; whether to keep `## 讨论经过` is the author's choice. `issue` never reads, checks or modifies it.
+
+## 11. Implementation constraints
+
+- Rust stable, producing two executables, `issue` and `issue-github`, for Windows 11 and Linux, with no external programs needed at run time. The file format, id, template and similar logic live in a library crate shared by both.
+- Keep dependencies minimal: one common crate each for command-line parsing, SHA-256 and JSON serialization. `issue-github` may additionally use one HTTP client and one TLS implementation; `issue` does not depend on them. The front matter is parsed by hand according to the subset in section 3.3, without a YAML library, so that comments and unchanged lines are kept byte for byte on modification.
+- UTF-8 throughout, never through any code page.
+- Follow `AGENTS.md`: English identifiers and comments, UTF-8 without BOM, LF line endings.
+- Parsing, id computation, checking and modification logic live in library modules that can be unit-tested without a process; `main` only handles argument parsing, input and output, and exit codes.
+
+## 12. Tests
+
+- Unit tests: all reference vectors of section 4; parsing and writing of the front matter subset (including the title quoting rule and keeping end-of-line comments); splitting the body (including `## ` inside fenced code blocks); a positive and a negative case for every `check` rule; every `modi` option.
+- Integration tests live in `tests/`; each test uses a fresh temporary project directory, runs the built `issue` as a child process, and checks stdout, stderr, the exit code and the file bytes. Cover at least:
+  - All behavior of `new`, matching the checks in section 7 of `spec-create-issue.md`.
+  - Filtering and sorting in `list`, and its behavior with a damaged file.
+  - The three outputs of `show`.
+  - Atomicity of `modi`: when any option fails, the file stays byte for byte the same; likewise on a slug rename collision.
+  - After `modi`, the file still passes `check`, and unchanged lines are byte for byte the same.
+  - The reporting and exit code of `check` for every kind of error and warning.
+  - Files created with `create-issue.ps1` pass `issue check`.
+- Extra sections: `show` prints them as is; after `modi` changes the three sections and the front matter, extra sections stay byte for byte the same; no content in an extra section (including level-1 and level-2 headings and `---` lines) affects `check`.
+- `issue-github`: GitHub API access is abstracted behind an interface, and tests use recorded JSON responses, never the real network. `import` covers at least the field mapping, pagination, skipping pull requests, slug and label conversion (including results that become empty), skipping an issue with the same `remote`, and the bump on an id collision. `sync` covers at least: appending and replacing `## 讨论经过`; content outside `## 讨论经过` staying byte for byte the same; not writing the file when nothing changed; comments added, edited and deleted; only reporting differing remote fields; continuing with the remaining files when a remote issue does not exist. Both cover `--dry-run`, keeping already written files after a failure midway, and the token never appearing in any output; every file created or modified must pass `issue check`.
+- Tests do not call git, do not access the network, and do not modify any file outside the test directory.
+
+## 13. Deliverables
+
+- A Cargo workspace in the project root: the shared library crate and the two executables `issue` and `issue-github`, each with tests.
+- `default-template.md` stays in the project root and is embedded into `issue` at compile time.
+- `create-issue.ps1` and its test `test/create-issue.tests.ps1` stay unchanged.
+
+## 14. Out of scope
+
+GUIs and web UIs; discussion, comments, notifications; users, permissions and assignees; priorities, milestones, dependencies between issues; full-text search; a delete command (use `git rm`, or set the status to `rejected` / `wontfix`); any git operation; writing back to GitHub; syncing anything other than `## 讨论经过` (title, status, labels); remotes other than GitHub; importing pull requests; localization of command-line messages.
+
+## 15. Open questions
+
+To be settled before the specification is final:
+
+1. Whether `issue` is a good program name.
+2. Whether to keep `labels`.
+3. Whether `list` shows only active statuses by default, or everything.
+4. The minimum length of an id prefix (currently 2).
+5. Whether unknown keys in the front matter are errors (the current design) or warnings, to allow extension.
+6. Whether `issue edit <ref>` is needed: open the file in `$EDITOR` and run `check` automatically after saving.
+7. Whether `issue-github` is a good name for the companion tool, or whether it should be published as a repository separate from `issue`.
+8. Whether mapping a GitHub issue that is `closed` with reason `completed` to `fixed` is right: it was closed on GitHub, but this repository may have no corresponding `fixed-in`.
+9. Whether the heading text `## 讨论经过` stays fixed in Chinese or can be set with an option.
+10. When `sync` finds that the status on GitHub differs from the local one, whether an option should write it to the local file, or whether it only ever reports.
