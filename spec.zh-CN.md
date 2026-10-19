@@ -70,7 +70,7 @@ GitHub 等平台的 issue 功能虽然完善，但 issue 存放在网站上，�
 
 ### 3.3 front matter
 
-文件以 front matter 开头：第一行为 `---`，直到下一行 `---`。其中的键、顺序和写法固定如下（`labels` 和 `remote` 行可省略，其余必填）：
+文件以 front matter 开头：第一行为 `---`，直到下一行 `---`。其中可以出现的键和写法如下（`labels`、`remote` 和三个标题声明可以省略，其余必填）。键的顺序不作规定；模板和工具写出时采用下列推荐顺序：
 
 ```
 ---
@@ -78,28 +78,34 @@ id: <id>
 opened: <opened>
 title: <title>
 status: <status>
-fixed-in: [<commit>, ...]
+fixed_in: [<commit>, ...]
 labels: [<label>, ...]
 remote: <remote>
+problem_title: <text>
+proposal_title: <text>
+decision_title: <text>
 ---
 ```
 
-- 每个键一行，顺序固定，不允许其他键、空行或注释行。
+- 键名一律使用标识符形式（小写字母、数字和下划线）。每个键一行，不允许重复的键、其他键、空行或注释行。键的顺序不影响解析。
 - 每行的值之后可以有 YAML 行尾注释（空白后接 `#` 直到行尾）。`issue` 修改某个值时保留该行的注释。
 - front matter 必须是合法 YAML，且只使用下面规定的子集，以便第三方用任意 YAML 解析器得到同样的结果：
   - `id`：8 个字符，字母表见第 4 节。
   - `opened`：`YYYY-MM-DDTHH:MM:SS.fffZ`，UTC，恰好三位小数。
   - `title`：单行文本，可以为空。读取时接受 YAML 普通标量或双引号字符串（转义规则同 JSON）。写出时，满足以下全部条件就写成普通标量，否则写成双引号字符串：首字符不是 `` -?:,[]{}#&*!|>'"%@` `` 之一；不含 `: ` 和 ` #`；首尾没有空白。不支持单引号字符串。
   - `status`：`open`、`accepted`、`fixed`、`rejected`、`wontfix` 之一。
-  - `fixed-in`：流式列表，元素为 7 到 40 位小写十六进制提交 ID，不重复。空列表写作 `[]`。
+  - `fixed_in`：流式列表，元素为 7 到 40 位小写十六进制提交 ID，不重复。空列表写作 `[]`。
   - `labels`：流式列表，元素符合 slug 规则，不重复，保持写入顺序。
   - `remote`：该 issue 在远程平台上的对应条目，值为该条目的完整 URL：`https://github.com/<owner>/<repo>/issues/<number>`，例如 `https://github.com/serialport/node-serialport/issues/3149`。目前只支持 GitHub 这一个 remote，协议必须是 `https`，主机必须是 `github.com`，末尾不带 `/`、查询参数或 `#` 片段。`<owner>` 由 ASCII 字母、数字和连字符组成；`<repo>` 由 ASCII 字母、数字、`.`、`_`、`-` 组成；`<number>` 为不以 0 开头的正整数。同一个 remote 不能出现在两个 issue 文件中，比较 `<owner>` 和 `<repo>` 时不区分大小写。`remote` 只是数据，`issue` 从不访问它。
+  - `problem_title`、`proposal_title`、`decision_title`：三段正文的标题文字（`## ` 之后的部分），写法同 `title`，但不能为空。三者必须同时出现或同时省略；省略时分别取缺省值 `Problem`、`Proposal`、`Decision`。三者不能彼此相同，也不能是 `讨论经过`（第 10.5 节）。
 - 没有 `updated`、`closed` 之类的时间字段：这些信息由 git 历史提供。
 
 ### 3.4 正文
 
-- front matter 之后是一个空行，然后依次是三个**必需**的二级标题（以 `## ` 开头的行），对应 problem、proposal、decision。之后可以有**附加段落**。
-- 段落按**顺序**识别，标题文字可以任意，由项目模板决定语种，例如 `## Problem` 或 `## 问题描述`。
+- front matter 之后是一个空行，然后是三段正文，之后可以有**附加段落**。
+- 文件中的前三个二级标题（以 `## ` 开头的行）必须依次恰为 `## <problem_title>`、`## <proposal_title>`、`## <decision_title>`，否则报错。比较时取 `## ` 之后、去掉首尾空白的部分，区分大小写，完全相等才算匹配。
+- 标题文字由声明字段决定，因此与语种无关：中文项目声明 `problem_title: 问题描述`，正文中就写 `## 问题描述`；未声明时正文写 `## Problem`。
+- 所有有用的内容都必须归入三段正文。在三段之前或之间插入其他二级标题（例如 `## 背景`）属于结构错误；这类内容应写成相应段落下的三级标题，例如 Problem 下的 `### 背景`。
 - 第一个二级标题之前只允许空行。三段正文的内容中不允许出现一级标题；三级及以下标题可以使用。围栏代码块（` ``` ` 或 `~~~`）内的行不视为标题。
 - 三段正文各自的内容 = 该标题之后到下一个二级标题（或文件末尾）之间的行，去掉首尾空行。内容可以为空。
 - **附加段落**：从第四个二级标题所在行起，直到文件末尾的全部内容。`issue` 把它当作不透明的文本：不解析其中的标题和结构，不校验其内容，不出现在 JSON 输出中，`modi` 逐字节保留它。第 3.1 节的编码规则仍然适用于整个文件。
@@ -112,7 +118,7 @@ id: ggkpa773
 opened: 2026-10-18T00:03:31.121Z
 title: Start fails when one server cannot bind
 status: accepted        # open | accepted | fixed | rejected | wontfix
-fixed-in: []            # commit IDs, backfilled at version commit time
+fixed_in: []            # commit IDs, backfilled at version commit time
 labels: [startup]
 ---
 
@@ -129,6 +135,27 @@ Stop all started servers and report every failure.
 Accepted: implement the proposal in 0.4.
 ```
 
+使用中文标题的文件，front matter 中声明三个标题：
+
+```
+---
+id: 0vdz2x70
+opened: 2026-10-17T23:58:07.000Z
+title: 块的 offset 没有要求偶数
+status: open
+fixed_in: []
+problem_title: 问题描述
+proposal_title: 解决提案
+decision_title: 裁定
+---
+
+## 问题描述
+
+## 解决提案
+
+## 裁定
+```
+
 ## 4. id 与 opened
 
 id 算法、`opened` 的格式、日期参数的解析、冲突处理与 bump 规则，以及全部参考测试向量，都与 `spec-create-issue.md` 第 1、3、5 节完全一致，`issue` 必须通过同一组向量。要点：
@@ -142,7 +169,8 @@ id 算法、`opened` 的格式、日期参数的解析、冲突处理与 bump �
 - 新建 issue 时，有 `issues/template.md` 就用它，否则用内置默认模板。默认模板的内容即本仓库的 `default-template.md`（英文），在编译时嵌入 `issue`，运行时不依赖任何外部文件。
 - 模板的读取、占位符 `{{id}}` / `{{opened}}` 的替换，以及 `opened` 字段的强制填写，规则同 `spec-create-issue.md` 第 4 节。
 - 生成的内容必须通过 `check` 的全部错误检查，否则不写入任何文件、退出码 1，消息中指出模板的问题。
-- 项目需要其他语种或不同的标题文字时，自行提供对应的 `issues/template.md`；三个必需的二级标题不能缺少，也不能改变顺序；模板可以在其后附带附加段落。
+- 项目需要其他语种或不同的标题文字时，自行提供对应的 `issues/template.md`，并在其 front matter 中写出三个标题声明字段，与模板正文的标题一致。默认模板使用缺省值，不写这三个字段。
+- 模板可以在三段之后附带附加段落。
 
 ## 6. 命令行
 
@@ -180,6 +208,8 @@ issue [-C <dir>] <command> [args]
 
 ### 6.5 `issue modi <ref> [选项]...`
 
+> **待定**：`modi` 的规格（对 front matter 各字段、三段正文以及附加段落的修改）将单独讨论。本节内容暂不作为定稿依据。
+
 修改一个 issue。至少需要一个选项，否则属于用法错误。
 
 | 选项 | 作用 |
@@ -187,7 +217,7 @@ issue [-C <dir>] <command> [args]
 | `--title <text>` | 替换 `title` |
 | `--status <status>` | 替换 `status`；不强制状态迁移顺序 |
 | `--slug <slug>` | 修改文件名中的 slug，id 不变 |
-| `--fixed-in-add <commit>`，`--fixed-in-remove <commit>` | 增删 `fixed-in` 元素，可重复；增加已有元素、删除不存在的元素都不算错误 |
+| `--fixed-in-add <commit>`，`--fixed-in-remove <commit>` | 增删 `fixed_in` 元素，可重复；增加已有元素、删除不存在的元素都不算错误 |
 | `--label-add <label>`，`--label-remove <label>` | 增删 `labels` 元素，可重复；列表为空时删除 `labels` 行，首次添加时新增该行（不带注释） |
 | `--remote <remote>`，`--remote-clear` | 设置或删除 `remote`；首次设置时新增该行（不带注释） |
 | `--problem <source>`，`--proposal <source>`，`--decision <source>` | 用新内容**整体替换**该段落 |
@@ -207,17 +237,17 @@ issue [-C <dir>] <command> [args]
 
 - 编码：有 BOM 或 CR。
 - 文件名不符合第 3.2 节；不同文件的 id 重复。
-- front matter 结构不符合第 3.3 节：缺键、多键、顺序不对、值不合规。
+- front matter 结构不符合第 3.3 节：缺键、重复的键、未知的键、值不合规；三个标题声明只出现了一部分，或取值为空、彼此相同、为 `讨论经过`。
 - id 不能由 `opened` 推导，或与文件名的前 8 个字符不一致。
 - `remote` 格式不合规，或同一个 remote 出现在多个文件中。
-- 正文结构不符合第 3.4 节。
+- 正文结构不符合第 3.4 节，包括前三个二级标题与声明的标题文字不一致、顺序不对，或在三段之前、之间插入了其他二级标题。错误信息中提示改用三级标题。
 - `template.md` 在替换占位符后生成的内容不合规。
 
 警告（不影响退出码）：
 
 - `title` 为空。
 - 状态为 `accepted` 或关闭状态，但 decision 为空。
-- 状态不是 `fixed`，但 `fixed-in` 不为空。
+- 状态不是 `fixed`，但 `fixed_in` 不为空。
 - issues 目录中有 issue 文件和 `template.md` 之外的条目。
 
 输出：每条发现一行，`<file>: error|warning: <message>`。有任何错误时退出码 1，否则为 0。适合放进 pre-commit 钩子或 CI。
@@ -239,6 +269,11 @@ issue [-C <dir>] <command> [args]
   "fixed_in": [],
   "labels": ["startup"],
   "remote": "https://github.com/example/server/issues/42",
+  "section_titles": {
+    "problem": "Problem",
+    "proposal": "Proposal",
+    "decision": "Decision"
+  },
   "sections": {
     "problem": "When one of several servers fails to bind, the others keep running.",
     "proposal": "Stop all started servers and report every failure.",
@@ -247,7 +282,7 @@ issue [-C <dir>] <command> [args]
 }
 ```
 
-- `file` 是相对项目根目录的路径，使用 `/` 分隔。`labels` 行省略时为 `[]`；`remote` 行省略时为 `null`。
+- `file` 是相对项目根目录的路径，使用 `/` 分隔。`labels` 行省略时为 `[]`；`remote` 行省略时为 `null`；未声明标题时，`section_titles` 为缺省的英文值。
 - `show --json` / `new --json`：`{"schema_version": 1, "issue": <对象>}`。
 - `list --json`：`{"schema_version": 1, "issues": [<对象>...]}`，对象中不含 `sections`。
 - `check --json`：`{"schema_version": 1, "findings": [{"file": ..., "level": "error"|"warning", "message": ...}]}`。
@@ -260,7 +295,7 @@ issue [-C <dir>] <command> [args]
 - `issue` 从不调用 git，也从不提交。何时提交由人或第三方决定。
 - 每一个提交中的 issue 文件，就是该 issue 在那个时间点的阶段性表述。查看一个 issue 的演变：`git log --follow -p -- issues/<id>-<slug>.md`。改 slug 是文件重命名，git 的重命名检测能跟踪；id 是稳定的检索键。
 - 修改表述时，建议让 issue 文件的改动独立成提交，或与实现它的代码放在同一个提交中，使历史保持可读。提交信息的格式不在本规格范围内。
-- `fixed-in` 的回填由版本提交流程使用 `issue modi --fixed-in-add` 完成。
+- `fixed_in` 的回填由版本提交流程使用 `issue modi --fixed-in-add` 完成。
 
 ## 9. 与第三方的边界
 
@@ -303,7 +338,7 @@ issue [-C <dir>] <command> [args]
 | 仓库与编号 | `remote`：API 返回的 issue 页面 URL（`html_url`），形如 `https://github.com/<owner>/<repo>/issues/<number>` |
 | issue 正文和全部评论 | 附加段落 `## 讨论经过`（第 10.5 节） |
 
-- `fixed-in` 为 `[]`。
+- `fixed_in` 为 `[]`。
 - slug 转换规则：转为小写，ASCII 字母和数字以外的字符替换为连字符，合并连续的连字符，去掉首尾的连字符；超过 60 个字符时在连字符处截断。由 `title` 转换得到的 slug 为空时（例如标题全是中文），使用 `gh-<number>`。
 - 三段正文由模板（第 5 节）生成，保持模板原样，**不填写内容**。
 - id 由 `opened` 计算。按 GitHub issue 编号升序处理；id 与已有文件冲突时，按 bump 规则加 1 ms 后重试。
@@ -368,6 +403,7 @@ issue [-C <dir>] <command> [args]
   - `modi` 之后的文件仍然通过 `check`，未修改的行逐字节不变。
   - `check` 对每一类错误和警告的报告，以及退出码。
   - 用 `create-issue.ps1` 创建的文件能通过 `issue check`。
+- 标题声明：缺省和声明两种情况都能正确解析；部分声明、取值不合规、标题与声明不一致、调换顺序、插入其他二级标题时，`check` 报错；键的顺序不同但内容相同的文件，解析结果相同。
 - 附加段落：`show` 原样输出；`modi` 修改三段正文和 front matter 后，附加段落逐字节不变；附加段落中的任意内容（包括一级、二级标题和 `---` 行）都不影响 `check`。
 - `issue-github`：GitHub API 访问抽象为接口，测试使用录制好的 JSON 响应，不访问真实网络。`import` 至少覆盖字段映射、分页、跳过 pull request、slug 和标签的转换（包括转换结果为空的情况）、`remote` 相同时跳过、id 冲突时 bump。`sync` 至少覆盖：追加与替换 `## 讨论经过`；`## 讨论经过` 之外的内容逐字节不变；内容不变时不写文件；评论的新增、编辑、删除；远程字段不一致时只提示；远程 issue 不存在时继续处理其余文件。两者都要覆盖 `--dry-run`、中途失败时已写文件的保留，以及令牌不出现在任何输出中；生成或修改后的文件必须通过 `issue check`。
 - 测试不调用 git，不访问网络，不修改测试目录之外的任何文件。
@@ -393,6 +429,6 @@ GUI 和 WebUI；讨论、评论、通知；用户、权限和指派人；优先�
 5. front matter 中出现未知键时，按错误处理（目前的设计）还是按警告处理以便扩展。
 6. 是否需要 `issue edit <ref>`：用 `$EDITOR` 打开文件，保存后自动运行 `check`。
 7. 附加工具的名称 `issue-github` 是否合适，还是作为 `issue` 之外的另一个仓库发布。
-8. GitHub 上 `closed` 且原因为 `completed` 的 issue 映射为 `fixed` 是否合适：它在 GitHub 上被关闭，但在本仓库中未必有对应的 `fixed-in`。
+8. GitHub 上 `closed` 且原因为 `completed` 的 issue 映射为 `fixed` 是否合适：它在 GitHub 上被关闭，但在本仓库中未必有对应的 `fixed_in`。
 9. `## 讨论经过` 的标题文字是否固定为中文，还是允许通过选项指定。
 10. `sync` 发现 GitHub 上的状态与本地不一致时，是否需要一个选项把它写回本地，还是始终只提示。

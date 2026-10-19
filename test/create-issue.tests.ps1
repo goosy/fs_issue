@@ -7,7 +7,7 @@ $OPENED_FORMAT = 'yyyy-MM-ddTHH:mm:ss.fffZ'
 # Default template content from spec section 4, written independently of default-template.md.
 $SPEC_DEFAULT = "---`nid: {{id}}`nopened: {{opened}}`ntitle:`n" +
     "status: open        # open | accepted | fixed | rejected | wontfix`n" +
-    "fixed-in: []        # commit IDs, backfilled at version commit time`n---`n`n" +
+    "fixed_in: []        # commit IDs, backfilled at version commit time`n---`n`n" +
 "## Problem`n`n## Proposal`n`n## Decision`n"
 
 $failures = 0
