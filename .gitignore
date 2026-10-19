@@ -1,0 +1,12 @@
+# Local-only files
+.local/
+
+# AI guidance files (kept local, not tracked)
+CLAUDE.md
+AGENTS.md
+
+# Editor / OS cruft
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
