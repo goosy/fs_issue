@@ -1,0 +1,15 @@
+[package]
+name = "fs-issue"
+version = "0.0.1"
+edition = "2024"
+authors = ["goosy (https://github.com/goosy)"]
+description = "File-based issue tracking: issues live as Markdown files in your repository"
+license = "MPL-2.0"
+repository = "https://github.com/goosy/fs-issue"
+keywords = ["issue", "tracker", "markdown", "cli"]
+categories = ["command-line-utilities", "development-tools"]
+include = ["src/**", "Cargo.toml", "LICENSE"]
+
+[[bin]]
+name = "issue"
+path = "src/main.rs"

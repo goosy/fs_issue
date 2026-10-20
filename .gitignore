@@ -10,3 +10,6 @@ AGENTS.md
 .idea/
 Thumbs.db
 Desktop.ini
+
+# Rust build output
+/target/
