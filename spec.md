@@ -27,7 +27,7 @@ A lightweight but complete, file- and command-line-based record of problems and 
 - The command-line program `issue` (written in Rust) creates, lists, shows, modifies and checks issues, and provides structured data to third parties as JSON.
 - An issue file records only the **current** statement; how the statement changes over time is shown by git history.
 - GUIs, web UIs, the discussion itself and its original archive are implemented by third parties and are outside this system.
-- The companion tool `issue-github` (section 10) imports issues from GitHub and syncs the discussion on GitHub into `## 讨论经过`; the three sections are still rewritten by a person or an AI assistant. It is a separate program; `issue` itself never accesses the network.
+- The companion tool `issue-github` (section 10) imports issues from GitHub and syncs the discussion on GitHub into `## Discussion`; the three sections are still rewritten by a person or an AI assistant. It is a separate program; `issue` itself never accesses the network.
 
 The existing `create-issue.ps1` stays unchanged as the interim implementation of `issue new`; its behavior is defined by `spec-create-issue.md`. Whether to retire it is decided after `issue` is complete. The previously planned `create-issue.sh` is no longer needed: `issue` also supports Linux.
 
@@ -51,7 +51,7 @@ The existing `create-issue.ps1` stays unchanged as the interim implementation of
 - Together, problem, proposal and decision must reflect the **final** decision: how the problem was finally understood, what was proposed, and what was decided.
 - Rejected proposals may stay in the issue file, for example as alternatives that were considered, with the reasons for rejecting them, listed in proposal, provided that reading the three sections makes the final decision clear and a rejected alternative cannot be mistaken for the adopted one.
 - The discussion process, comments and votes are not written into the three sections. Their archive belongs to third-party systems, which refer to an issue by its id.
-- After the three sections there may be extra sections (section 3.4), such as `## 讨论经过` written and synced by `issue-github`. `issue` does not read, check or modify the content of extra sections; whether to keep them is the author's choice.
+- After the three sections there may be extra sections (section 3.4), such as `## Discussion` written and synced by `issue-github`. `issue` does not read, check or modify the content of extra sections; whether to keep them is the author's choice.
 - Issues that were rejected (`rejected`) or will not be handled (`wontfix`) are kept as well, never deleted.
 - When a statement changes, the corresponding section is rewritten in place; no chronological "Update: ..." entries are appended. Every version of the statement stays in git history.
 
@@ -97,7 +97,7 @@ decision_title: <text>
   - `fixed_in`: a flow sequence of commit IDs of 7 to 40 lowercase hexadecimal digits, without duplicates. An empty list is written `[]`.
   - `labels`: a flow sequence of elements that follow the slug rule, without duplicates, in insertion order.
   - `remote`: the issue's counterpart on a remote platform; the value is its full URL, `https://github.com/<owner>/<repo>/issues/<number>`, for example `https://github.com/serialport/node-serialport/issues/3149`. Only GitHub is supported as a remote for now: the scheme must be `https`, the host must be `github.com`, and there is no trailing `/`, query or `#` fragment. `<owner>` consists of ASCII letters, digits and hyphens; `<repo>` consists of ASCII letters, digits, `.`, `_` and `-`; `<number>` is a positive integer without a leading 0. The same remote must not appear in two issue files; `<owner>` and `<repo>` are compared case-insensitively. `remote` is only data: `issue` never accesses it.
-  - `problem_title`, `proposal_title`, `decision_title`: the heading text of the three sections (the part after `## `), written like `title` but never empty. The three appear together or are omitted together; when omitted, they default to `Problem`, `Proposal` and `Decision`. They must differ from each other and must not be `讨论经过` (section 10.5).
+  - `problem_title`, `proposal_title`, `decision_title`: the heading text of the three sections (the part after `## `), written like `title` but never empty. The three appear together or are omitted together; when omitted, they default to `Problem`, `Proposal` and `Decision`. They must differ from each other and must not be `Discussion` (section 10.5).
 - There are no time fields such as `updated` or `closed`: git history provides that information.
 
 ### 3.4 Body
@@ -186,10 +186,10 @@ issue [-C <dir>] <command> [args]
 - Arguments must be valid UTF-8; otherwise it is a usage error.
 - **Issue reference `<ref>`**: a full id, a unique id prefix (at least 2 characters), an issue file name, or an issue file path. When nothing matches or a prefix is ambiguous, the exit code is 1 and the message lists all candidate file names.
 
-### 6.2 `issue new <slug> [date] [--title <text>] [--label <label>]... [--json]`
+### 6.2 `issue new <slug> [date] [--title <text>] [--labels <list>] [--json]`
 
 - `slug`, `date`, the id, collision handling and templates follow sections 4 and 5 and `spec-create-issue.md`.
-- `--title` sets `title`; `--label` may be repeated and sets `labels`; without labels the line is not written.
+- `--title` sets `title`; `--labels` sets `labels`, as a comma-separated list with the rules of section 6.5; without labels the line is not written.
 - stdout: the created file name; with `--json`, the single issue object of section 7.
 
 ### 6.3 `issue list [--status <status>]... [--label <label>]... [--all] [--json]`
@@ -206,26 +206,74 @@ issue [-C <dir>] <command> [args]
 - `--section problem|proposal|decision`: prints only that section's content (as defined in section 3.4), without the heading.
 - `--json`: prints the single issue object of section 7, including the three sections.
 
-### 6.5 `issue modi <ref> [options]...`
+### 6.5 `issue modi <ref> [-] [options]...`
 
-> **Pending**: the specification of `modi` (modifying front matter fields, the three sections and extra sections) will be discussed separately. This section is not yet a basis for the final specification.
-
-Modifies one issue. At least one option is required; otherwise it is a usage error.
+Modifies one issue. At least one option or `-` is required; otherwise it is a usage error.
 
 | Option | Effect |
 | :- | :- |
-| `--title <text>` | replaces `title` |
+| `--title <text>` | replaces `title`; an empty string makes it empty |
 | `--status <status>` | replaces `status`; no transition order is enforced |
 | `--slug <slug>` | changes the slug in the file name; the id stays |
-| `--fixed-in-add <commit>`, `--fixed-in-remove <commit>` | adds or removes `fixed_in` elements, repeatable; adding an existing element or removing a missing one is not an error |
-| `--label-add <label>`, `--label-remove <label>` | adds or removes `labels` elements, repeatable; the `labels` line is removed when the list becomes empty and added (without a comment) on the first addition |
-| `--remote <remote>`, `--remote-clear` | sets or removes `remote`; the line is added (without a comment) when first set |
-| `--problem <source>`, `--proposal <source>`, `--decision <source>` | **replaces the whole** section with new content |
+| `--fixed-in <list>`, `--add-fixed-in <list>`, `--remove-fixed-in <list>` | replaces `fixed_in`, or adds or removes elements |
+| `--labels <list>`, `--add-labels <list>`, `--remove-labels <list>` | replaces `labels`, or adds or removes elements |
+| `--remote <remote>` | sets `remote`; an empty string removes the line |
+| `--problem-title <text>`, `--proposal-title <text>`, `--decision-title <text>` | replaces the heading declaration and the corresponding heading line in the body |
+| `--problem <text>`, `--proposal <text>`, `--decision <text>` | **replaces the whole** section with the given text |
+| `-` | reads new content for the three sections from stdin |
 
-- `<source>`: `-` reads from stdin, `@<path>` reads from a file (UTF-8), any other value is literal text. CRLF in the content is normalized to LF, and leading and trailing blank lines are removed. An empty string clears the section. The new content must not contain level-1 or level-2 headings; otherwise it is a usage error. Extra sections are not affected.
+Array fields (`fixed_in`, `labels`):
+
+- `<list>`: elements separated by `,`, for example `--labels bug,ui`. Every element must follow the rule of its field (section 3.3); an empty element (`a,,b`, `a,`) is a usage error.
+- Only `--fixed-in` and `--labels` accept the empty string, which empties the list; for the add and remove options it is a usage error.
+- A replacement list must not contain duplicates; otherwise it is a usage error.
+- The add and remove options may be repeated, with the same effect as one joined list. Added elements are appended in the given order. Adding an existing element or removing a missing one is not an error.
+- Replacing a field and adding to or removing from the same field in one call is a usage error.
+- When `labels` becomes empty, its line is removed; an empty `fixed_in` is written `[]`.
+
+Heading declarations:
+
+- The value is written like `title` and must not be empty; otherwise it is a usage error.
+- When the file has no declarations, all three are written; those not given take their defaults. Callers are encouraged to give all three.
+- The corresponding heading line in the body is rewritten as `## <text>`.
+
+Section content:
+
+- The value of `--problem`, `--proposal` and `--decision` is always literal text; no value has a special meaning. CRLF is normalized to LF and leading and trailing blank lines are removed; an empty string clears the section. The content must not contain level-1 or level-2 headings (lines inside fenced code blocks are not headings); otherwise it is a usage error.
+- These options suit short text. Long or multi-line text should be passed through stdin, because the command line length is limited by the platform (on Windows, 32767 characters for the whole command line).
+- `-`: stdin is read only when `-` is given. It is read as a whole as UTF-8 (otherwise a usage error); a BOM is removed and CRLF is normalized to LF. The input is split by level-2 headings as in section 3.4:
+  - Only blank lines may precede the first level-2 heading.
+  - Each heading text, with leading and trailing whitespace removed, must equal one of the three heading texts in effect after the modification, and may appear at most once; otherwise it is a usage error. Headings of extra sections are not accepted.
+  - The content under each heading is defined as in section 3.4 and follows the rules above. Sections absent from stdin are not changed.
+- Giving the same section both as an option and in stdin is a usage error.
+- Extra sections are never read or modified.
+
+Examples:
+
+```bash
+issue modi ggkpa773 --status accepted --labels bug,ui - <<'EOF'
+## Proposal
+...
+
+## Decision
+...
+EOF
+```
+
+```powershell
+@'
+## Decision
+...
+'@ | issue modi ggkpa773 -
+```
+
+General rules:
+
 - `id` and `opened` cannot be modified.
 - The target file must first pass every error check of `check`; otherwise the modification is refused (exit code 1, errors listed), so that a damaged file is not written further.
-- Only lines that need to change are changed; unchanged lines and extra sections stay byte for byte the same; changing a value keeps the end-of-line comment; heading lines stay unchanged.
+- The result must also pass every error check of `check`, for example the three heading declarations must differ from each other and must not be `Discussion`; otherwise nothing is written (exit code 1, errors listed).
+- Only lines that need to change are changed; unchanged lines and extra sections stay byte for byte the same; changing a value keeps the end-of-line comment; heading lines stay unchanged unless their declaration changes. Removing a key removes its line.
+- A key that is added (`labels`, `remote`, the heading declarations) is written without a comment, right after the last existing key that precedes it in the recommended order of section 3.3; when there is none, at the end of the front matter.
 - The modification is atomic: either all options take effect or none does. The result is written to a temporary file in the issues directory and then replaces the original; when changing the slug and the new file name already exists, it is an error, exit code 1, and nothing is changed.
 - stdout: the file name after the modification (the new name after a slug change).
 
@@ -237,7 +285,7 @@ Errors:
 
 - Encoding: a BOM or a CR.
 - The file name does not follow section 3.2; two files share an id.
-- The front matter structure does not follow section 3.3: missing keys, duplicate keys, unknown keys, invalid values; only some of the three heading declarations present, or a declaration that is empty, equal to another one, or `讨论经过`.
+- The front matter structure does not follow section 3.3: missing keys, duplicate keys, unknown keys, invalid values; only some of the three heading declarations present, or a declaration that is empty, equal to another one, or `Discussion`.
 - The id cannot be derived from `opened`, or does not equal the first 8 characters of the file name.
 - `remote` is malformed, or the same remote appears in several files.
 - The body structure does not follow section 3.4, including first three level-2 headings that differ from the declared heading text or are out of order, or another level-2 heading inserted before or between the three sections. The message suggests using a level-3 heading instead.
@@ -295,7 +343,7 @@ A single issue object:
 - `issue` never calls git and never commits. When to commit is decided by people or third parties.
 - The issue file in each commit is the issue's statement at that point in time. To see how an issue evolved: `git log --follow -p -- issues/<id>-<slug>.md`. Changing the slug is a file rename that git's rename detection follows; the id is the stable lookup key.
 - When a statement changes, it is recommended to commit the issue file change on its own, or together with the code that implements it, to keep history readable. The commit message format is outside this specification.
-- `fixed_in` is backfilled by the version commit process with `issue modi --fixed-in-add`.
+- `fixed_in` is backfilled by the version commit process with `issue modi --add-fixed-in`.
 
 ## 9. Boundary with third parties
 
@@ -310,7 +358,7 @@ A single issue object:
 
 - A separate executable `issue-github`, in the same Cargo workspace as `issue`.
 - `import`: reads issues of a target repository from GitHub, creates the corresponding issue files in the current project's issues directory, and writes `remote`.
-- `sync`: reads the discussion on GitHub again according to `remote` and updates `## 讨论经过`.
+- `sync`: reads the discussion on GitHub again according to `remote` and updates `## Discussion`.
 - Division of labor: **the tool syncs the discussion; the three sections are still rewritten by a person or an AI assistant.** `import` writes front matter only when it creates a file; `sync` never changes the front matter or the three sections.
 - Only GitHub's read-only REST API is called; nothing on GitHub is ever modified. Only GitHub is supported for now.
 
@@ -336,7 +384,7 @@ Field mapping:
 | `state` / `state_reason` | `open` → `open`; `closed` with reason `completed` or no reason → `fixed`; `not_planned` → `wontfix`; `duplicate` → `rejected` |
 | `labels` | `labels`. Names are converted with the slug conversion rule below; labels that become empty are dropped with a warning on stderr |
 | Repository and number | `remote`: the issue page URL returned by the API (`html_url`), of the form `https://github.com/<owner>/<repo>/issues/<number>` |
-| Issue body and all comments | the extra section `## 讨论经过` (section 10.5) |
+| Issue body and all comments | the extra section `## Discussion` (section 10.5) |
 
 - `fixed_in` is `[]`.
 - Slug conversion rule: lowercase; replace every character other than ASCII letters and digits with a hyphen; collapse consecutive hyphens; strip leading and trailing hyphens; when longer than 60 characters, cut at a hyphen. When the slug converted from `title` is empty (for example a title entirely in Chinese), use `gh-<number>`.
@@ -346,22 +394,22 @@ Field mapping:
 ### 10.4 `issue-github [-C <dir>] sync [<ref>...] [--dry-run]`
 
 - Without `<ref>`, all issues with a `remote` are synced; with refs, only those, and a ref without a `remote` is an error.
-- For each issue, the issue body and all comments are read from GitHub again and `## 讨论经过` is **regenerated as a whole**:
-  - If the file has no `## 讨论经过`, it is appended at the end of the file.
+- For each issue, the issue body and all comments are read from GitHub again and `## Discussion` is **regenerated as a whole**:
+  - If the file has no `## Discussion`, it is appended at the end of the file.
   - If it has one, everything from that heading line to the end of the file is replaced.
-- The rest of the file (front matter, the three sections, other extra sections before `## 讨论经过`) stays byte for byte the same.
+- The rest of the file (front matter, the three sections, other extra sections before `## Discussion`) stays byte for byte the same.
 - Because it is regenerated as a whole every time, no sync progress has to be recorded; comments added, edited or deleted on GitHub are all reflected. The increment shows up in git diff: content identical to the previous version produces no difference.
 - When the result equals the existing content, the file is not written.
 - When the title, status or labels on GitHub differ from the local ones, this is only reported on stderr and the local fields are not changed: the local file is the authoritative source.
 - The target file must first pass every error check of `issue check`; otherwise it is skipped with an error. When an issue no longer exists on GitHub or is not accessible, an error is reported and the remaining issues are still processed; the exit code is 1 at the end.
 - stdout: one line per modified file, its file name.
 
-### 10.5 The `## 讨论经过` section
+### 10.5 The `## Discussion` section
 
-The heading text is fixed as `## 讨论经过`, independent of the template's language. The section is managed by `issue-github` and must be at the end of the file; edits the author makes inside it are overwritten by the next `sync`.
+The heading text is fixed as `## Discussion`, independent of the template's language. The section is managed by `issue-github` and must be at the end of the file; edits the author makes inside it are overwritten by the next `sync`.
 
 ```
-## 讨论经过
+## Discussion
 
 ### @<login> 2026-10-18T00:03:31Z
 
@@ -374,15 +422,15 @@ The heading text is fixed as `## 讨论经过`, independent of the template's la
 
 - The first entry is the issue's own body, followed by all comments in chronological order. Bodies are kept as is, except that CRLF is normalized to LF; an empty body is written as `（空）`.
 - Events such as label changes, assignment and closing are not included, and attachments are not downloaded; attachments and images stay in the bodies as links to GitHub.
-- How `sync` locates `## 讨论经过`: the first line after the three sections whose content is exactly `## 讨论经过`.
+- How `sync` locates `## Discussion`: the first line after the three sections whose content is exactly `## Discussion`.
 
 ### 10.6 Workflow
 
 1. Import with `issue-github import`. The generated files pass every error check of `issue check`; the empty three sections produce warnings.
-2. A person or an AI assistant reads `## 讨论经过` and writes the final decision into the three sections, for example `issue modi <ref> --problem @problem.md --decision @decision.md`.
+2. A person or an AI assistant reads `## Discussion` and writes the final decision into the three sections, for example with `issue modi <ref> -` and the new sections on stdin.
 3. When there is new discussion on GitHub, run `issue-github sync`, and a person or an AI assistant rewrites the three sections accordingly.
 4. Every change is reviewed through git diff before it is committed; it becomes authoritative once merged into the default branch (section 8).
-5. An issue that no longer needs syncing can be unlinked with `issue modi --remote-clear`; whether to keep `## 讨论经过` is the author's choice. `issue` never reads, checks or modifies it.
+5. An issue that no longer needs syncing can be unlinked with `issue modi --remote ""`; whether to keep `## Discussion` is the author's choice. `issue` never reads, checks or modifies it.
 
 ## 11. Implementation constraints
 
@@ -394,7 +442,7 @@ The heading text is fixed as `## 讨论经过`, independent of the template's la
 
 ## 12. Tests
 
-- Unit tests: all reference vectors of section 4; parsing and writing of the front matter subset (including the title quoting rule and keeping end-of-line comments); splitting the body (including `## ` inside fenced code blocks); a positive and a negative case for every `check` rule; every `modi` option.
+- Unit tests: all reference vectors of section 4; parsing and writing of the front matter subset (including the title quoting rule and keeping end-of-line comments); splitting the body (including `## ` inside fenced code blocks); a positive and a negative case for every `check` rule; every `modi` option, including the stdin input.
 - Integration tests live in `tests/`; each test uses a fresh temporary project directory, runs the built `issue` as a child process, and checks stdout, stderr, the exit code and the file bytes. Cover at least:
   - All behavior of `new`, matching the checks in section 7 of `spec-create-issue.md`.
   - Filtering and sorting in `list`, and its behavior with a damaged file.
@@ -405,7 +453,7 @@ The heading text is fixed as `## 讨论经过`, independent of the template's la
   - Files created with `create-issue.ps1` pass `issue check`.
 - Heading declarations: files with defaults and with declarations are both parsed correctly; `check` reports an error for partial declarations, invalid values, headings that differ from the declarations, swapped order, and an inserted level-2 heading; files that differ only in key order parse to the same result.
 - Extra sections: `show` prints them as is; after `modi` changes the three sections and the front matter, extra sections stay byte for byte the same; no content in an extra section (including level-1 and level-2 headings and `---` lines) affects `check`.
-- `issue-github`: GitHub API access is abstracted behind an interface, and tests use recorded JSON responses, never the real network. `import` covers at least the field mapping, pagination, skipping pull requests, slug and label conversion (including results that become empty), skipping an issue with the same `remote`, and the bump on an id collision. `sync` covers at least: appending and replacing `## 讨论经过`; content outside `## 讨论经过` staying byte for byte the same; not writing the file when nothing changed; comments added, edited and deleted; only reporting differing remote fields; continuing with the remaining files when a remote issue does not exist. Both cover `--dry-run`, keeping already written files after a failure midway, and the token never appearing in any output; every file created or modified must pass `issue check`.
+- `issue-github`: GitHub API access is abstracted behind an interface, and tests use recorded JSON responses, never the real network. `import` covers at least the field mapping, pagination, skipping pull requests, slug and label conversion (including results that become empty), skipping an issue with the same `remote`, and the bump on an id collision. `sync` covers at least: appending and replacing `## Discussion`; content outside `## Discussion` staying byte for byte the same; not writing the file when nothing changed; comments added, edited and deleted; only reporting differing remote fields; continuing with the remaining files when a remote issue does not exist. Both cover `--dry-run`, keeping already written files after a failure midway, and the token never appearing in any output; every file created or modified must pass `issue check`.
 - Tests do not call git, do not access the network, and do not modify any file outside the test directory.
 
 ## 13. Deliverables
@@ -416,7 +464,7 @@ The heading text is fixed as `## 讨论经过`, independent of the template's la
 
 ## 14. Out of scope
 
-GUIs and web UIs; discussion, comments, notifications; users, permissions and assignees; priorities, milestones, dependencies between issues; full-text search; a delete command (use `git rm`, or set the status to `rejected` / `wontfix`); any git operation; writing back to GitHub; syncing anything other than `## 讨论经过` (title, status, labels); remotes other than GitHub; importing pull requests; localization of command-line messages.
+GUIs and web UIs; discussion, comments, notifications; users, permissions and assignees; priorities, milestones, dependencies between issues; full-text search; a delete command (use `git rm`, or set the status to `rejected` / `wontfix`); any git operation; writing back to GitHub; syncing anything other than `## Discussion` (title, status, labels); remotes other than GitHub; importing pull requests; localization of command-line messages.
 
 ## 15. Open questions
 
@@ -430,5 +478,5 @@ To be settled before the specification is final:
 6. Whether `issue edit <ref>` is needed: open the file in `$EDITOR` and run `check` automatically after saving.
 7. Whether `issue-github` is a good name for the companion tool, or whether it should be published as a repository separate from `issue`.
 8. Whether mapping a GitHub issue that is `closed` with reason `completed` to `fixed` is right: it was closed on GitHub, but this repository may have no corresponding `fixed_in`.
-9. Whether the heading text `## 讨论经过` stays fixed in Chinese or can be set with an option.
+9. Whether the heading text `## Discussion` stays fixed in English or can be set with an option.
 10. When `sync` finds that the status on GitHub differs from the local one, whether an option should write it to the local file, or whether it only ever reports.
