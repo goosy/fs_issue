@@ -29,7 +29,7 @@ GitHub 等平台的 issue 功能虽然完善，但 issue 存放在网站上，�
 - GUI、WebUI、讨论本身及其原始存档都由第三方实现，不在本系统内。
 - 附加工具 `issue-github`（第 10 节）从 GitHub 导入 issue，并把 GitHub 上的讨论同步到讨论经过段落 `## Discussion`；三段正文仍由人或 AI 助手改写。它是独立的程序，`issue` 本身绝不访问网络。
 
-现有的 `create-issue.ps1` 保持不变，作为 `issue new` 的过渡实现，其行为以 `spec-create-issue.md` 为准。`issue` 完成后再决定是否让它退役。原计划的 `create-issue.sh` 不再需要：`issue` 同时支持 Linux。
+现有的 `create-issue.ps1` 作为 `issue new` 的过渡实现保留，其行为以 `spec-create-issue.md` 为准。`issue` 完成后将其删除。原计划的 `create-issue.sh` 不再需要：`issue` 同时支持 Linux。
 
 ### 设计取舍
 
@@ -166,7 +166,7 @@ id 算法、`opened` 的格式、日期参数的解析、冲突处理与 bump �
 
 ## 5. 模板
 
-- 新建 issue 时，有 `issues/template.md` 就用它，否则用内置默认模板。默认模板的内容即本仓库的 `default-template.md`（英文），在编译时嵌入 `issue`，运行时不依赖任何外部文件。
+- 新建 issue 时，有 `issues/template.md` 就用它，否则用内置默认模板。默认模板的内容即本仓库的 `src/default-template.md`（英文），在编译时嵌入 `issue`，运行时不依赖任何外部文件。
 - 模板的读取、占位符 `{{id}}` / `{{opened}}` 的替换，以及 `opened` 字段的强制填写，规则同 `spec-create-issue.md` 第 4 节。
 - 生成的内容必须通过 `check` 的全部错误检查，否则不写入任何文件、退出码 1，消息中指出模板的问题。
 - 项目需要其他语种或不同的标题文字时，自行提供对应的 `issues/template.md`，并在其 front matter 中写出三个标题声明字段，与模板正文的标题一致。默认模板使用缺省值，不写这三个字段。
@@ -459,8 +459,8 @@ EOF
 ## 13. 交付物
 
 - 项目根目录下的 Cargo 工作区：共用的库 crate，以及 `issue` 和 `issue-github` 两个可执行文件，各自带测试。
-- `default-template.md` 保留在项目根目录，由 `issue` 在编译时嵌入。
-- `create-issue.ps1` 及其测试 `test/create-issue.tests.ps1` 保持不变。
+- `src/default-template.md` 由 `issue` 在编译时嵌入；`create-issue.ps1` 读取同一个文件。
+- `create-issue.ps1` 及其测试 `test/create-issue.tests.ps1` 保留到 `issue` 完成，之后删除。
 
 ## 14. 范围外
 

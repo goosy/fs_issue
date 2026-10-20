@@ -13,7 +13,7 @@ function get_template {
 
     $template_path = [System.IO.Path]::Combine($issues_directory, $TEMPLATE_FILE_NAME)
     if (-not [System.IO.File]::Exists($template_path)) {
-        $template_path = [System.IO.Path]::Combine($PSScriptRoot, $DEFAULT_TEMPLATE_FILE_NAME)
+        $template_path = [System.IO.Path]::Combine($PSScriptRoot, 'src', $DEFAULT_TEMPLATE_FILE_NAME)
         if (-not [System.IO.File]::Exists($template_path)) {
             throw [System.IO.FileNotFoundException]::new("default template not found: $template_path")
         }

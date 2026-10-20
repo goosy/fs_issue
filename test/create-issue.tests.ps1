@@ -296,7 +296,7 @@ foreach ($path in @($script_path, $PSCommandPath)) {
     assert_true (test_clean_bytes $bytes) "$(Split-Path -Leaf $path) no bom and no cr"
     assert_true (-not ($bytes | Where-Object { $_ -gt 127 })) "$(Split-Path -Leaf $path) ascii only"
 }
-$default_template_bytes = [System.IO.File]::ReadAllBytes((Join-Path $script_directory $DEFAULT_TEMPLATE_FILE_NAME))
+$default_template_bytes = [System.IO.File]::ReadAllBytes((Join-Path (Join-Path $script_directory 'src') $DEFAULT_TEMPLATE_FILE_NAME))
 assert_true (test_clean_bytes $default_template_bytes) "$DEFAULT_TEMPLATE_FILE_NAME no bom and no cr"
 
 if ($failures -eq 0) {

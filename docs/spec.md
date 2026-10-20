@@ -29,7 +29,7 @@ A lightweight but complete, file- and command-line-based record of problems and 
 - GUIs, web UIs, the discussion itself and its original archive are implemented by third parties and are outside this system.
 - The companion tool `issue-github` (section 10) imports issues from GitHub and syncs the discussion on GitHub into `## Discussion`; the three sections are still rewritten by a person or an AI assistant. It is a separate program; `issue` itself never accesses the network.
 
-The existing `create-issue.ps1` stays unchanged as the interim implementation of `issue new`; its behavior is defined by `spec-create-issue.md`. Whether to retire it is decided after `issue` is complete. The previously planned `create-issue.sh` is no longer needed: `issue` also supports Linux.
+The existing `create-issue.ps1` stays as the interim implementation of `issue new`; its behavior is defined by `spec-create-issue.md`. It is removed once `issue` is complete. The previously planned `create-issue.sh` is no longer needed: `issue` also supports Linux.
 
 ### Design trade-offs
 
@@ -166,7 +166,7 @@ The id algorithm, the format of `opened`, the parsing of the date argument, coll
 
 ## 5. Templates
 
-- When an issue is created, `issues/template.md` is used if it exists, otherwise the built-in default template. The default template is the content of this repository's `default-template.md` (English), embedded into `issue` at compile time, so nothing external is needed at run time.
+- When an issue is created, `issues/template.md` is used if it exists, otherwise the built-in default template. The default template is the content of this repository's `src/default-template.md` (English), embedded into `issue` at compile time, so nothing external is needed at run time.
 - Reading the template, replacing the placeholders `{{id}}` / `{{opened}}`, and always filling the `opened` field follow section 4 of `spec-create-issue.md`.
 - The generated content must pass every error check of `check`; otherwise nothing is written, the exit code is 1, and the message points out the problem in the template.
 - A project that needs another language or other heading text supplies its own `issues/template.md` and writes the three heading declarations in its front matter, matching the headings in the template body. The default template uses the defaults and does not write these three fields.
@@ -459,8 +459,8 @@ The heading text is fixed as `## Discussion`, independent of the template's lang
 ## 13. Deliverables
 
 - A Cargo workspace in the project root: the shared library crate and the two executables `issue` and `issue-github`, each with tests.
-- `default-template.md` stays in the project root and is embedded into `issue` at compile time.
-- `create-issue.ps1` and its test `test/create-issue.tests.ps1` stay unchanged.
+- `src/default-template.md` is embedded into `issue` at compile time; `create-issue.ps1` reads the same file.
+- `create-issue.ps1` and its test `test/create-issue.tests.ps1` stay until `issue` is complete, then are removed.
 
 ## 14. Out of scope
 

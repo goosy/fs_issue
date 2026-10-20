@@ -60,7 +60,7 @@ A collision means: `./issues/` already contains a file whose name starts with `<
 
 The project-local template is `./issues/template.md`, resolved from the current working directory. If it exists, copy its content to the new issue after replacing `{{id}}` and `{{opened}}`.
 
-If `./issues/template.md` does not exist, use the default template `default-template.md`, located in the same directory as `create-issue.ps1` (resolved through `$PSScriptRoot`, never through the current directory). It is a plain Markdown file, UTF-8 without BOM, LF, and is read with an explicit UTF-8 encoding, never through a code page; it is not embedded in the script. The default template is in English. A project that wants another language, or other sections, supplies its own `./issues/template.md` in that language. When it is needed but missing, that is a runtime error: exit 1, the message names the missing file, and nothing is written (not even the `issues/` directory). When `./issues/template.md` exists, `default-template.md` is not needed.
+If `./issues/template.md` does not exist, use the default template `src/default-template.md`, located in the `src/` subdirectory of the directory containing `create-issue.ps1` (resolved through `$PSScriptRoot`, never through the current directory). It is a plain Markdown file, UTF-8 without BOM, LF, and is read with an explicit UTF-8 encoding, never through a code page; it is not embedded in the script. The default template is in English. A project that wants another language, or other sections, supplies its own `./issues/template.md` in that language. When it is needed but missing, that is a runtime error: exit 1, the message names the missing file, and nothing is written (not even the `issues/` directory). When `./issues/template.md` exists, `default-template.md` is not needed.
 
 Read a template (project or default) as UTF-8, normalize CRLF to LF, replace `{{id}}` and `{{opened}}`, and write the result as UTF-8 **without BOM**, LF only. `template.md` is never an issue file and must not be modified by this command.
 
@@ -142,7 +142,7 @@ Invalid slugs (must exit 2, create nothing): no arguments at all, `""`, `Fix-Bug
 Three files:
 
 - `create-issue.ps1`, in the project root directory
-- `default-template.md`, in the project root directory, next to `create-issue.ps1`
+- `default-template.md`, in the `src/` directory under the project root, where the Rust `issue` embeds it as well
 - `create-issue.tests.ps1`, in the `test/` directory under the project root; it locates `create-issue.ps1` in its parent directory
 
 `issue-template.md` is intentionally no longer a deliverable: projects optionally supply `./issues/template.md`, while `default-template.md` provides the fallback template. When finished, run the test script under `pwsh` and, if available, under `powershell`, and report the actual results. If Windows PowerShell 5.1 is not available, say so instead of claiming it passes.
