@@ -90,20 +90,22 @@ function format_opened {
     return [datetimeoffset]::FromUnixTimeMilliseconds($epoch_ms).UtcDateTime.ToString('yyyy-MM-ddTHH:mm:ss.fffZ', [Globalization.CultureInfo]::InvariantCulture)
 }
 
-# Sets the first `opened:` line of the leading front matter to $opened, keeping a trailing comment.
-function set_front_matter_opened {
-    param([string]$content, [string]$opened)
+# Sets the first `<key>:` line of the leading front matter to $value, keeping a trailing comment;
+# an empty $value leaves `<key>:` with nothing after the colon.
+function set_front_matter_value {
+    param([string]$content, [string]$key, [string]$value)
 
     $front_matter = [regex]::Match($content, '\A---\n(?:.*\n)*?---(?:\n|\z)')
     if (-not $front_matter.Success) {
         return $content
     }
-    $opened_line = [regex]::Match($front_matter.Value, '(?m)^opened:(?<value>.*?)(?<comment>[ \t]+#.*)?$')
-    if (-not $opened_line.Success) {
+    $key_line = [regex]::Match($front_matter.Value, "(?m)^$([regex]::Escape($key)):(?<value>.*?)(?<comment>[ \t]+#.*)?$")
+    if (-not $key_line.Success) {
         return $content
     }
-    $new_line = "opened: $opened" + $opened_line.Groups['comment'].Value
-    return $content.Substring(0, $opened_line.Index) + $new_line + $content.Substring($opened_line.Index + $opened_line.Length)
+    $new_line = if ($value -eq '') { "${key}:" } else { "${key}: $value" }
+    $new_line += $key_line.Groups['comment'].Value
+    return $content.Substring(0, $key_line.Index) + $new_line + $content.Substring($key_line.Index + $key_line.Length)
 }
 
 # Returns the name of an existing issue file that uses $id, or $null.
@@ -156,7 +158,8 @@ function create_issue_file {
         $opened = format_opened $candidate_ms
         $file_name = "$id-$slug.md"
         $file_path = [System.IO.Path]::Combine($issues_directory, $file_name)
-        $content = set_front_matter_opened ($template.Replace('{{id}}', $id).Replace('{{opened}}', $opened)) $opened
+        $content = set_front_matter_value ($template.Replace('{{id}}', $id).Replace('{{opened}}', $opened)) 'opened' $opened
+        $content = set_front_matter_value $content 'closed' ''
         $content_bytes = [System.Text.UTF8Encoding]::new($false).GetBytes($content)
 
         try {
