@@ -70,12 +70,13 @@ GitHub 等平台的 issue 功能虽然完善，但 issue 存放在网站上，�
 
 ### 3.3 front matter
 
-文件以 front matter 开头：第一行为 `---`，直到下一行 `---`。其中可以出现的键和写法如下（`labels`、`remote` 和三个标题声明可以省略，其余必填）。键的顺序不作规定；模板和工具写出时采用下列推荐顺序：
+文件以 front matter 开头：第一行为 `---`，直到下一行 `---`。其中的键和写法如下。所有键都必须出现：不适用的字段写成空值，而不是省略。键的顺序不作规定；模板和工具写出时采用下列推荐顺序：
 
 ```
 ---
 id: <id>
 opened: <opened>
+closed: <closed>
 title: <title>
 status: <status>
 fixed_in: [<commit>, ...]
@@ -89,22 +90,24 @@ decision_title: <text>
 
 - 键名一律使用标识符形式（小写字母、数字和下划线）。每个键一行，不允许重复的键、其他键、空行或注释行。键的顺序不影响解析。
 - 每行的值之后可以有 YAML 行尾注释（空白后接 `#` 直到行尾）。`issue` 修改某个值时保留该行的注释。
+- 空值表示该字段未生效。标量字段的空值写作 `<key>:`，冒号后不写任何内容（即 YAML 的 null）；没有元素的列表字段写作 `[]`。只有 `closed`、`title`、`remote` 和三个标题声明可以为空；`fixed_in` 和 `labels` 可以是 `[]`。
 - front matter 必须是合法 YAML，且只使用下面规定的子集，以便第三方用任意 YAML 解析器得到同样的结果：
   - `id`：8 个字符，字母表见第 4 节。
   - `opened`：`YYYY-MM-DDTHH:MM:SS.fffZ`，UTC，恰好三位小数。
+  - `closed`：issue 进入关闭状态的时间，格式同 `opened`。这个键始终存在；`status` 为活动状态时值为空（`closed:`，即 YAML 的 null），为关闭状态时值为时间。时间不得早于 `opened`。由 `issue modi` 维护（第 6.5 节）。
   - `title`：单行文本，可以为空。读取时接受 YAML 普通标量或双引号字符串（转义规则同 JSON）。写出时，满足以下全部条件就写成普通标量，否则写成双引号字符串：首字符不是 `` -?:,[]{}#&*!|>'"%@` `` 之一；不含 `: ` 和 ` #`；首尾没有空白。不支持单引号字符串。
   - `status`：`open`、`accepted`、`fixed`、`rejected`、`wontfix` 之一。
   - `fixed_in`：流式列表，元素为 7 到 40 位小写十六进制提交 ID，不重复。空列表写作 `[]`。
   - `labels`：流式列表，元素符合 slug 规则，不重复，保持写入顺序。
-  - `remote`：该 issue 在远程平台上的对应条目，值为该条目的完整 URL：`https://github.com/<owner>/<repo>/issues/<number>`，例如 `https://github.com/serialport/node-serialport/issues/3149`。目前只支持 GitHub 这一个 remote，协议必须是 `https`，主机必须是 `github.com`，末尾不带 `/`、查询参数或 `#` 片段。`<owner>` 由 ASCII 字母、数字和连字符组成；`<repo>` 由 ASCII 字母、数字、`.`、`_`、`-` 组成；`<number>` 为不以 0 开头的正整数。同一个 remote 不能出现在两个 issue 文件中，比较 `<owner>` 和 `<repo>` 时不区分大小写。`remote` 只是数据，`issue` 从不访问它。
-  - `problem_title`、`proposal_title`、`decision_title`：三段正文的标题文字（`## ` 之后的部分），写法同 `title`，但不能为空。三者必须同时出现或同时省略；省略时分别取缺省值 `Problem`、`Proposal`、`Decision`。三者不能彼此相同，也不能是 `Discussion`（第 10.5 节）。
-- 没有 `updated`、`closed` 之类的时间字段：这些信息由 git 历史提供。
+  - `remote`：该 issue 在远程平台上的对应条目；没有时为空，否则值为该条目的完整 URL：`https://github.com/<owner>/<repo>/issues/<number>`，例如 `https://github.com/serialport/node-serialport/issues/3149`。目前只支持 GitHub 这一个 remote，协议必须是 `https`，主机必须是 `github.com`，末尾不带 `/`、查询参数或 `#` 片段。`<owner>` 由 ASCII 字母、数字和连字符组成；`<repo>` 由 ASCII 字母、数字、`.`、`_`、`-` 组成；`<number>` 为不以 0 开头的正整数。同一个 remote 不能出现在两个 issue 文件中，比较 `<owner>` 和 `<repo>` 时不区分大小写。`remote` 只是数据，`issue` 从不访问它。
+  - `problem_title`、`proposal_title`、`decision_title`：三段正文的标题文字（`## ` 之后的部分），写法同 `title`。三者要么都为空，要么都不为空；为空时分别取缺省值 `Problem`、`Proposal`、`Decision`。设置了值时，三者不能彼此相同，也不能是 `Discussion`（第 10.5 节）。
+- 没有 `updated` 字段：这一信息由 git 历史提供。`closed` 之所以写在文件中，是因为 git 无法可靠地提供它：`issue` 从不调用 git；rebase、squash 会改变提交时间；文件从别的仓库拷入或从 GitHub 导入时，历史也不复存在。
 
 ### 3.4 正文
 
 - front matter 之后是一个空行，然后是三段正文，之后可以有**附加段落**。
 - 文件中的前三个二级标题（以 `## ` 开头的行）必须依次恰为 `## <problem_title>`、`## <proposal_title>`、`## <decision_title>`，否则报错。比较时取 `## ` 之后、去掉首尾空白的部分，区分大小写，完全相等才算匹配。
-- 标题文字由声明字段决定，因此与语种无关：中文项目声明 `problem_title: 问题描述`，正文中就写 `## 问题描述`；未声明时正文写 `## Problem`。
+- 标题文字由声明字段决定，因此与语种无关：中文项目声明 `problem_title: 问题描述`，正文中就写 `## 问题描述`；声明为空时正文写 `## Problem`。
 - 所有有用的内容都必须归入三段正文。在三段之前或之间插入其他二级标题（例如 `## 背景`）属于结构错误；这类内容应写成相应段落下的三级标题，例如 Problem 下的 `### 背景`。
 - 第一个二级标题之前只允许空行。三段正文的内容中不允许出现一级标题；三级及以下标题可以使用。围栏代码块（` ``` ` 或 `~~~`）内的行不视为标题。
 - 三段正文各自的内容 = 该标题之后到下一个二级标题（或文件末尾）之间的行，去掉首尾空行。内容可以为空。
@@ -116,10 +119,15 @@ decision_title: <text>
 ---
 id: ggkpa773
 opened: 2026-10-18T00:03:31.121Z
+closed:
 title: Start fails when one server cannot bind
 status: accepted        # open | accepted | fixed | rejected | wontfix
 fixed_in: []            # commit IDs, backfilled at version commit time
 labels: [startup]
+remote:
+problem_title:
+proposal_title:
+decision_title:
 ---
 
 ## Problem
@@ -141,9 +149,12 @@ Accepted: implement the proposal in 0.4.
 ---
 id: 0vdz2x70
 opened: 2026-10-17T23:58:07.000Z
+closed:
 title: 块的 offset 没有要求偶数
 status: open
 fixed_in: []
+labels: []
+remote:
 problem_title: 问题描述
 proposal_title: 解决提案
 decision_title: 裁定
@@ -169,7 +180,8 @@ id 算法、`opened` 的格式、日期参数的解析、冲突处理与 bump �
 - 新建 issue 时，有 `issues/template.md` 就用它，否则用内置默认模板。默认模板的内容即本仓库的 `src/default-template.md`（英文），在编译时嵌入 `issue`，运行时不依赖任何外部文件。
 - 模板的读取、占位符 `{{id}}` / `{{opened}}` 的替换，以及 `opened` 字段的强制填写，规则同 `spec-create-issue.md` 第 4 节。
 - 生成的内容必须通过 `check` 的全部错误检查，否则不写入任何文件、退出码 1，消息中指出模板的问题。
-- 项目需要其他语种或不同的标题文字时，自行提供对应的 `issues/template.md`，并在其 front matter 中写出三个标题声明字段，与模板正文的标题一致。默认模板使用缺省值，不写这三个字段。
+- 项目需要其他语种或不同的标题文字时，自行提供对应的 `issues/template.md`，并在其 front matter 中设置三个标题声明字段，与模板正文的标题一致。默认模板使用缺省值，这三个字段留空。
+- 模板写出第 3.3 节的全部键。对新建的 issue 尚未生效的字段，例如 `closed` 和 `remote`，留空。
 - 模板可以在三段之后附带附加段落。
 
 ## 6. 命令行
@@ -189,7 +201,7 @@ issue [-C <dir>] <command> [args]
 ### 6.2 `issue new <slug> [date] [--title <text>] [--labels <list>] [--json]`
 
 - `slug`、`date`、id、冲突处理和模板，规则同第 4、5 节及 `spec-create-issue.md`。
-- `--title` 写入 `title`；`--labels` 写入 `labels`，以逗号分隔，规则同第 6.5 节；没有标签时不写这一行。
+- `--title` 写入 `title`；`--labels` 写入 `labels`，以逗号分隔，规则同第 6.5 节；不给出时 `labels` 保持模板中的值。
 - stdout：所创建的文件名；带 `--json` 时输出第 7 节的单个 issue 对象。
 
 ### 6.3 `issue list [--status <status>]... [--label <label>]... [--all] [--json]`
@@ -213,11 +225,12 @@ issue [-C <dir>] <command> [args]
 | 选项 | 作用 |
 | :- | :- |
 | `--title <text>` | 替换 `title`；传空字符串即置空 |
-| `--status <status>` | 替换 `status`；不强制状态迁移顺序 |
+| `--status <status>` | 替换 `status`；不强制状态迁移顺序；`closed` 随状态变化（见下文） |
+| `--closed <time>` | 设置 `closed`，用于更正记录的关闭时间 |
 | `--slug <slug>` | 修改文件名中的 slug，id 不变 |
 | `--fixed-in <list>`，`--add-fixed-in <list>`，`--remove-fixed-in <list>` | 替换 `fixed_in`，或增删其中的元素 |
 | `--labels <list>`，`--add-labels <list>`，`--remove-labels <list>` | 替换 `labels`，或增删其中的元素 |
-| `--remote <remote>` | 设置 `remote`；传空字符串即删除该行 |
+| `--remote <remote>` | 设置 `remote`；传空字符串即清空 |
 | `--problem-title <text>`，`--proposal-title <text>`，`--decision-title <text>` | 替换标题声明，并同时替换正文中对应的标题行 |
 | `--problem <text>`，`--proposal <text>`，`--decision <text>` | 用给定文本**整体替换**该段落 |
 | `-` | 从 stdin 读取三段正文的新内容 |
@@ -229,12 +242,19 @@ issue [-C <dir>] <command> [args]
 - 替换用的列表中不得有重复元素，否则属于用法错误。
 - 增删选项可重复，效果等同于合并成一个列表。增加的元素按给出的顺序追加到末尾。增加已有元素、删除不存在的元素都不算错误。
 - 同一次调用中，对同一字段既替换又增删，属于用法错误。
-- `labels` 变为空时删除该行；`fixed_in` 为空时写作 `[]`。
+- 空列表写作 `[]`。
+
+关闭时间（`closed`）：
+
+- 从活动状态改为关闭状态：`closed` 的值设为当前 UTC 时间，精确到毫秒。
+- 从一个关闭状态改为另一个关闭状态（例如 `fixed` → `wontfix`），或改为相同的状态：值保持不变。
+- 从关闭状态改为活动状态：清空值，`closed:` 行保留。
+- `--closed <time>` 取代原本要设置或保留的值。`<time>` 必须符合 `opened` 的格式，否则属于用法错误。修改后的状态为活动状态时给出 `--closed`，属于用法错误。不接受空字符串。
 
 标题声明：
 
 - 值的写法同 `title`，不得为空，否则属于用法错误。
-- 文件中原本没有声明时，三个声明一起写入，未给出的取默认值。提倡调用者三个都给出。
+- 文件中的声明为空时，三个声明一起设置，未给出的取默认值。提倡调用者三个都给出。
 - 正文中对应的标题行改写为 `## <text>`。
 
 段落内容：
@@ -272,8 +292,7 @@ EOF
 - `id` 和 `opened` 不可修改。
 - 目标文件必须先通过 `check` 的全部错误检查，否则拒绝修改（退出码 1，列出错误），以免在格式损坏的文件上继续写入。
 - 修改结果也必须通过 `check` 的全部错误检查，例如三个标题声明互不相同、且不是 `Discussion`；否则不写入（退出码 1，列出错误）。
-- 只改动需要改动的行；未修改的行和附加段落逐字节保持不变；修改值时保留行尾注释；除非对应的声明被修改，标题行不变。删除一个键即删除它所在的行。
-- 新增的键（`labels`、`remote`、标题声明）不带注释，写在第 3.3 节推荐顺序中排在它之前、且文件中已存在的最后一个键之后；没有这样的键时，写在 front matter 末尾。
+- 只改动需要改动的行；未修改的行和附加段落逐字节保持不变；修改值时保留行尾注释；除非对应的声明被修改，标题行不变。从不增加或删除键：清空一个值时，该行保留为 `<key>:`（列表为 `[]`），注释也保留。
 - 修改是原子的：所有选项要么全部生效，要么都不生效。先写入 issues 目录中的临时文件，再替换原文件；改 slug 时，新文件名已存在则报错，退出码 1，不做任何修改。
 - stdout：修改后的文件名（改 slug 后为新文件名）。
 
@@ -285,8 +304,9 @@ EOF
 
 - 编码：有 BOM 或 CR。
 - 文件名不符合第 3.2 节；不同文件的 id 重复。
-- front matter 结构不符合第 3.3 节：缺键、重复的键、未知的键、值不合规；三个标题声明只出现了一部分，或取值为空、彼此相同、为 `Discussion`。
+- front matter 结构不符合第 3.3 节：缺键、重复的键、未知的键、值不合规；三个标题声明只设置了一部分，或取值彼此相同、为 `Discussion`。
 - id 不能由 `opened` 推导，或与文件名的前 8 个字符不一致。
+- 状态为关闭状态但 `closed` 为空，状态为活动状态但 `closed` 有值，或 `closed` 早于 `opened`。
 - `remote` 格式不合规，或同一个 remote 出现在多个文件中。
 - 正文结构不符合第 3.4 节，包括前三个二级标题与声明的标题文字不一致、顺序不对，或在三段之前、之间插入了其他二级标题。错误信息中提示改用三级标题。
 - `template.md` 在替换占位符后生成的内容不合规。
@@ -312,6 +332,7 @@ EOF
   "slug": "start-partial-failure",
   "file": "issues/ggkpa773-start-partial-failure.md",
   "opened": "2026-10-18T00:03:31.121Z",
+  "closed": null,
   "title": "Start fails when one server cannot bind",
   "status": "accepted",
   "fixed_in": [],
@@ -330,7 +351,7 @@ EOF
 }
 ```
 
-- `file` 是相对项目根目录的路径，使用 `/` 分隔。`labels` 行省略时为 `[]`；`remote` 行省略时为 `null`；未声明标题时，`section_titles` 为缺省的英文值。
+- `file` 是相对项目根目录的路径，使用 `/` 分隔。`closed`、`remote` 为空时为 `null`；`title` 为空时为 `""`；标题声明为空时，`section_titles` 为缺省的英文值。
 - `show --json` / `new --json`：`{"schema_version": 1, "issue": <对象>}`。
 - `list --json`：`{"schema_version": 1, "issues": [<对象>...]}`，对象中不含 `sections`。
 - `check --json`：`{"schema_version": 1, "findings": [{"file": ..., "level": "error"|"warning", "message": ...}]}`。
@@ -382,6 +403,7 @@ EOF
 | `created_at` | `opened`。GitHub 只精确到秒，毫秒为 0 |
 | `title` | `title` |
 | `state` / `state_reason` | `open` → `open`；`closed` 且原因为 `completed` 或未给出 → `fixed`；`not_planned` → `wontfix`；`duplicate` → `rejected` |
+| `closed_at` | `closed`；未关闭的 issue 为空。毫秒为 0 |
 | `labels` | `labels`。名称按下述 slug 转换规则转换；转换后为空的标签丢弃，并在 stderr 中警告 |
 | 仓库与编号 | `remote`：API 返回的 issue 页面 URL（`html_url`），形如 `https://github.com/<owner>/<repo>/issues/<number>` |
 | issue 正文和全部评论 | 附加段落 `## Discussion`（第 10.5 节） |
@@ -400,7 +422,7 @@ EOF
 - 文件的其余部分（front matter、三段正文、`## Discussion` 之前的其他附加段落）逐字节保持不变。
 - 每次都整体重新生成，不需要记录同步进度；GitHub 上评论的新增、编辑和删除都会反映出来。增量部分由 git diff 体现：重新生成后与上一版相同的内容不会产生差异。
 - 生成结果与现有内容完全相同时，不写入文件。
-- GitHub 上的标题、状态、标签与本地不一致时，只在 stderr 中提示，不修改本地字段：本地文件才是权威来源。
+- GitHub 上的标题、状态、关闭时间、标签与本地不一致时，只在 stderr 中提示，不修改本地字段：本地文件才是权威来源。
 - 目标文件必须先通过 `issue check` 的全部错误检查，否则跳过并报错。某个 issue 在 GitHub 上已不存在或无权访问时，报错并继续处理其余 issue，最后退出码为 1。
 - stdout：每修改一个文件输出一行文件名。
 
@@ -447,6 +469,7 @@ EOF
   - `new` 的全部行为，与 `spec-create-issue.md` 第 7 节的检查项对应。
   - `list` 的过滤、排序，以及遇到损坏文件时的行为。
   - `show` 的三种输出。
+  - `modi` 对 `closed` 的处理：活动 → 关闭时设置，关闭 → 关闭时保留，关闭 → 活动时清空，`--closed` 覆盖，以及 `--closed` 的用法错误。
   - `modi` 的原子性：任何一个选项失败时，文件逐字节不变；改 slug 遇到冲突时也是如此。
   - `modi` 之后的文件仍然通过 `check`，未修改的行逐字节不变。
   - `check` 对每一类错误和警告的报告，以及退出码。

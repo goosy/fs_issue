@@ -66,15 +66,23 @@ Read a template (project or default) as UTF-8, normalize CRLF to LF, replace `{{
 
 The `opened` field is always filled, whether or not the template writes `{{opened}}`. After the placeholders are replaced, if the content starts with a front matter block (a first line `---` up to the next line `---`) and that block contains a line starting with `opened:`, the first such line becomes `opened: <opened>` with the computed time. A trailing YAML comment on that line (whitespace followed by `#` and the rest of the line) is kept. This applies when the value is `{{opened}}`, empty, or anything else. Lines outside the front matter are never touched, and no `opened:` line is added when the front matter has none.
 
+A new issue is never closed, so the `closed` field is always cleared in the same way: the first front matter line starting with `closed:` becomes `closed:` with an empty value, keeping a trailing comment. No `closed:` line is added when the front matter has none.
+
 Content of `default-template.md` (exactly):
 
 ```
 ---
 id: {{id}}
 opened: {{opened}}
+closed:
 title:
 status: open        # open | accepted | fixed | rejected | wontfix
 fixed_in: []        # commit IDs, backfilled at version commit time
+labels: []
+remote:
+problem_title:
+proposal_title:
+decision_title:
 ---
 
 ## Problem
@@ -135,7 +143,7 @@ Invalid slugs (must exit 2, create nothing): no arguments at all, `""`, `Fix-Bug
 6. Bump rule at function level: pre-create `issues/<id>-other.md` for ms `M`, call the create function for `M` with a new slug and bump allowed; the result is the file for `M + 1`, and the original file is untouched. With bump not allowed, it fails.
 7. The script files are ASCII-only, have no BOM and no CR; `default-template.md` has no BOM and no CR.
 8. A pre-existing unrelated project file is never modified.
-9. Template selection: with no `issues/template.md`, the issue uses the exact content of `default-template.md`, and that content equals section 4 (checked against an expected value written in the test, not read from the file). With `create-issue.ps1` copied alone into another directory: without a project template the run exits 1, names `default-template.md` in stderr and creates nothing; with a project template it succeeds. With an `issues/template.md` containing distinct UTF-8 content and both placeholders, the created issue uses that content with placeholders replaced; `template.md` itself is unchanged. With a project template whose front matter has `opened:` without `{{opened}}` (an empty value, and another value followed by a comment), the created issue's `opened:` line carries the computed time and keeps the comment, and an `opened:` line outside the front matter is unchanged.
+9. Template selection: with no `issues/template.md`, the issue uses the exact content of `default-template.md`, and that content equals section 4 (checked against an expected value written in the test, not read from the file). With `create-issue.ps1` copied alone into another directory: without a project template the run exits 1, names `default-template.md` in stderr and creates nothing; with a project template it succeeds. With an `issues/template.md` containing distinct UTF-8 content and both placeholders, the created issue uses that content with placeholders replaced; `template.md` itself is unchanged. With a project template whose front matter has `opened:` without `{{opened}}` (an empty value, and another value followed by a comment), the created issue's `opened:` line carries the computed time and keeps the comment, and an `opened:` line outside the front matter is unchanged. With a project template whose front matter has `closed:` with a value and a comment, the created issue's `closed:` line is empty and keeps the comment.
 
 ## 8. Deliverables
 

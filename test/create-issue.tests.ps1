@@ -5,9 +5,10 @@ $script_path = Join-Path $script_directory 'create-issue.ps1'
 $UTF8_NO_BOM = [System.Text.UTF8Encoding]::new($false)
 $OPENED_FORMAT = 'yyyy-MM-ddTHH:mm:ss.fffZ'
 # Default template content from spec section 4, written independently of default-template.md.
-$SPEC_DEFAULT = "---`nid: {{id}}`nopened: {{opened}}`ntitle:`n" +
+$SPEC_DEFAULT = "---`nid: {{id}}`nopened: {{opened}}`nclosed:`ntitle:`n" +
     "status: open        # open | accepted | fixed | rejected | wontfix`n" +
-    "fixed_in: []        # commit IDs, backfilled at version commit time`n---`n`n" +
+    "fixed_in: []        # commit IDs, backfilled at version commit time`n" +
+    "labels: []`nremote:`nproblem_title:`nproposal_title:`ndecision_title:`n---`n`n" +
 "## Problem`n`n## Proposal`n`n## Decision`n"
 
 $failures = 0
@@ -259,9 +260,15 @@ try {
         $opened_issue = create_issue_file 'opened-field' $case[2] $false
         assert_equal ([System.IO.File]::ReadAllText($opened_issue.file_path, [System.Text.Encoding]::UTF8)) $case[3] "template opened $($case[0])"
     }
-    assert_equal (set_front_matter_opened "---`ntitle:`n---`nopened:`n" 'T') "---`ntitle:`n---`nopened:`n" 'no opened line added'
-    assert_equal (set_front_matter_opened "text`n---`nopened:`n---`n" 'T') "text`n---`nopened:`n---`n" 'no front matter untouched'
-    assert_equal (set_front_matter_opened "---`nopened: {{opened}}`nopened: x`n---" 'T') "---`nopened: T`nopened: x`n---" 'only first opened line set'
+    assert_equal (set_front_matter_value "---`ntitle:`n---`nopened:`n" 'opened' 'T') "---`ntitle:`n---`nopened:`n" 'no opened line added'
+    assert_equal (set_front_matter_value "text`n---`nopened:`n---`n" 'opened' 'T') "text`n---`nopened:`n---`n" 'no front matter untouched'
+    assert_equal (set_front_matter_value "---`nopened: {{opened}}`nopened: x`n---" 'opened' 'T') "---`nopened: T`nopened: x`n---" 'only first opened line set'
+
+    # 9. closed is always cleared
+    [System.IO.File]::WriteAllText($template_path, "---`nopened:`nclosed: 2000-01-01T00:00:00.000Z   # set on close`n---`nclosed: keep`n", $UTF8_NO_BOM)
+    $closed_issue = create_issue_file 'closed-field' 1792281811121 $false
+    assert_equal ([System.IO.File]::ReadAllText($closed_issue.file_path, [System.Text.Encoding]::UTF8)) "---`nopened: 2026-10-18T00:03:31.121Z`nclosed:   # set on close`n---`nclosed: keep`n" 'template closed cleared'
+    assert_equal (set_front_matter_value "---`ntitle:`n---`n" 'closed' '') "---`ntitle:`n---`n" 'no closed line added'
 
     # 9. default template missing next to the script
     $lone_directory = new_project_directory

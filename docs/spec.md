@@ -70,12 +70,13 @@ The existing `create-issue.ps1` stays as the interim implementation of `issue ne
 
 ### 3.3 Front matter
 
-A file starts with front matter: a first line `---` up to the next line `---`. The keys that may appear and their syntax are as follows (`labels`, `remote` and the three heading declarations may be omitted; all others are required). The order of keys is not prescribed; templates and tools write them in the recommended order below:
+A file starts with front matter: a first line `---` up to the next line `---`. The keys and their syntax are as follows. Every key is required: a field that does not apply is written with an empty value rather than omitted. The order of keys is not prescribed; templates and tools write them in the recommended order below:
 
 ```
 ---
 id: <id>
 opened: <opened>
+closed: <closed>
 title: <title>
 status: <status>
 fixed_in: [<commit>, ...]
@@ -89,22 +90,24 @@ decision_title: <text>
 
 - Key names are always identifiers (lowercase letters, digits and underscores). One key per line; no duplicate keys, no other keys, no blank lines, no comment lines. The order of keys does not affect parsing.
 - Each value may be followed by a YAML end-of-line comment (whitespace followed by `#` up to the end of the line). When `issue` changes a value, it keeps that line's comment.
+- An empty value means the field is not in effect. A scalar field with an empty value is written `<key>:` with nothing after the colon (a YAML null); a list field with no elements is written `[]`. Only `closed`, `title`, `remote` and the three heading declarations may be empty; `fixed_in` and `labels` may be `[]`.
 - The front matter must be valid YAML and use only the subset defined below, so that third parties get the same result with any YAML parser:
   - `id`: 8 characters, alphabet as in section 4.
   - `opened`: `YYYY-MM-DDTHH:MM:SS.fffZ`, UTC, exactly three fractional digits.
+  - `closed`: the time the issue entered a closed status, in the same format as `opened`. The key is always present; its value is empty (`closed:`, a YAML null) while `status` is an active status, and is a time while `status` is a closed status. The time must not be earlier than `opened`. `issue modi` maintains it (section 6.5).
   - `title`: a single line of text, may be empty. On read, a YAML plain scalar or a double-quoted string (JSON escape rules) is accepted. On write, it is written as a plain scalar when all of the following hold, and as a double-quoted string otherwise: the first character is not one of `` -?:,[]{}#&*!|>'"%@` ``; it contains neither `: ` nor ` #`; it has no leading or trailing whitespace. Single-quoted strings are not supported.
   - `status`: one of `open`, `accepted`, `fixed`, `rejected`, `wontfix`.
   - `fixed_in`: a flow sequence of commit IDs of 7 to 40 lowercase hexadecimal digits, without duplicates. An empty list is written `[]`.
   - `labels`: a flow sequence of elements that follow the slug rule, without duplicates, in insertion order.
-  - `remote`: the issue's counterpart on a remote platform; the value is its full URL, `https://github.com/<owner>/<repo>/issues/<number>`, for example `https://github.com/serialport/node-serialport/issues/3149`. Only GitHub is supported as a remote for now: the scheme must be `https`, the host must be `github.com`, and there is no trailing `/`, query or `#` fragment. `<owner>` consists of ASCII letters, digits and hyphens; `<repo>` consists of ASCII letters, digits, `.`, `_` and `-`; `<number>` is a positive integer without a leading 0. The same remote must not appear in two issue files; `<owner>` and `<repo>` are compared case-insensitively. `remote` is only data: `issue` never accesses it.
-  - `problem_title`, `proposal_title`, `decision_title`: the heading text of the three sections (the part after `## `), written like `title` but never empty. The three appear together or are omitted together; when omitted, they default to `Problem`, `Proposal` and `Decision`. They must differ from each other and must not be `Discussion` (section 10.5).
-- There are no time fields such as `updated` or `closed`: git history provides that information.
+  - `remote`: the issue's counterpart on a remote platform; empty when there is none. Otherwise the value is its full URL, `https://github.com/<owner>/<repo>/issues/<number>`, for example `https://github.com/serialport/node-serialport/issues/3149`. Only GitHub is supported as a remote for now: the scheme must be `https`, the host must be `github.com`, and there is no trailing `/`, query or `#` fragment. `<owner>` consists of ASCII letters, digits and hyphens; `<repo>` consists of ASCII letters, digits, `.`, `_` and `-`; `<number>` is a positive integer without a leading 0. The same remote must not appear in two issue files; `<owner>` and `<repo>` are compared case-insensitively. `remote` is only data: `issue` never accesses it.
+  - `problem_title`, `proposal_title`, `decision_title`: the heading text of the three sections (the part after `## `), written like `title`. The three are either all empty or all non-empty; when empty, they default to `Problem`, `Proposal` and `Decision`. When set, they must differ from each other and must not be `Discussion` (section 10.5).
+- There is no `updated` field: git history provides that information. `closed` is kept in the file because git cannot supply it reliably: `issue` never calls git, commit times change on rebase or squash, and history is lost when a file is copied from another repository or imported from GitHub.
 
 ### 3.4 Body
 
 - The front matter is followed by one blank line and then by the three sections; **extra sections** may follow.
 - The first three level-2 headings in the file (lines starting with `## `) must be exactly `## <problem_title>`, `## <proposal_title>` and `## <decision_title>`, in that order; otherwise it is an error. The comparison uses the part after `## ` with leading and trailing whitespace removed, is case-sensitive, and requires exact equality.
-- Because the heading text comes from the declarations, it is independent of language: a Chinese project declares `problem_title: 问题描述` and writes `## 问题描述` in the body; without declarations the body has `## Problem`.
+- Because the heading text comes from the declarations, it is independent of language: a Chinese project declares `problem_title: 问题描述` and writes `## 问题描述` in the body; with empty declarations the body has `## Problem`.
 - All useful content must belong to the three sections. Inserting another level-2 heading before or between them (for example `## 背景`, background) is a structural error; such content is written as a level-3 heading under the relevant section, for example `### 背景` under Problem.
 - Only blank lines may precede the first level-2 heading. The content of the three sections must not contain level-1 headings; level-3 and deeper headings are allowed. Lines inside fenced code blocks (` ``` ` or `~~~`) are not headings.
 - The content of each of the three sections is the lines between its heading and the next level-2 heading (or the end of the file), with leading and trailing blank lines removed. The content may be empty.
@@ -116,10 +119,15 @@ decision_title: <text>
 ---
 id: ggkpa773
 opened: 2026-10-18T00:03:31.121Z
+closed:
 title: Start fails when one server cannot bind
 status: accepted        # open | accepted | fixed | rejected | wontfix
 fixed_in: []            # commit IDs, backfilled at version commit time
 labels: [startup]
+remote:
+problem_title:
+proposal_title:
+decision_title:
 ---
 
 ## Problem
@@ -141,9 +149,12 @@ A file with Chinese headings declares the three headings in its front matter:
 ---
 id: 0vdz2x70
 opened: 2026-10-17T23:58:07.000Z
+closed:
 title: 块的 offset 没有要求偶数
 status: open
 fixed_in: []
+labels: []
+remote:
 problem_title: 问题描述
 proposal_title: 解决提案
 decision_title: 裁定
@@ -169,7 +180,8 @@ The id algorithm, the format of `opened`, the parsing of the date argument, coll
 - When an issue is created, `issues/template.md` is used if it exists, otherwise the built-in default template. The default template is the content of this repository's `src/default-template.md` (English), embedded into `issue` at compile time, so nothing external is needed at run time.
 - Reading the template, replacing the placeholders `{{id}}` / `{{opened}}`, and always filling the `opened` field follow section 4 of `spec-create-issue.md`.
 - The generated content must pass every error check of `check`; otherwise nothing is written, the exit code is 1, and the message points out the problem in the template.
-- A project that needs another language or other heading text supplies its own `issues/template.md` and writes the three heading declarations in its front matter, matching the headings in the template body. The default template uses the defaults and does not write these three fields.
+- A project that needs another language or other heading text supplies its own `issues/template.md` and sets the three heading declarations in its front matter, matching the headings in the template body. The default template uses the defaults and leaves these three fields empty.
+- A template writes every key of section 3.3. Fields that are not in effect for a new issue, such as `closed` and `remote`, are left empty.
 - A template may carry extra sections after the three sections.
 
 ## 6. Command line
@@ -189,7 +201,7 @@ issue [-C <dir>] <command> [args]
 ### 6.2 `issue new <slug> [date] [--title <text>] [--labels <list>] [--json]`
 
 - `slug`, `date`, the id, collision handling and templates follow sections 4 and 5 and `spec-create-issue.md`.
-- `--title` sets `title`; `--labels` sets `labels`, as a comma-separated list with the rules of section 6.5; without labels the line is not written.
+- `--title` sets `title`; `--labels` sets `labels`, as a comma-separated list with the rules of section 6.5; without it, `labels` keeps the template's value.
 - stdout: the created file name; with `--json`, the single issue object of section 7.
 
 ### 6.3 `issue list [--status <status>]... [--label <label>]... [--all] [--json]`
@@ -213,11 +225,12 @@ Modifies one issue. At least one option or `-` is required; otherwise it is a us
 | Option | Effect |
 | :- | :- |
 | `--title <text>` | replaces `title`; an empty string makes it empty |
-| `--status <status>` | replaces `status`; no transition order is enforced |
+| `--status <status>` | replaces `status`; no transition order is enforced; `closed` follows the status (see below) |
+| `--closed <time>` | sets `closed`, to correct the recorded closing time |
 | `--slug <slug>` | changes the slug in the file name; the id stays |
 | `--fixed-in <list>`, `--add-fixed-in <list>`, `--remove-fixed-in <list>` | replaces `fixed_in`, or adds or removes elements |
 | `--labels <list>`, `--add-labels <list>`, `--remove-labels <list>` | replaces `labels`, or adds or removes elements |
-| `--remote <remote>` | sets `remote`; an empty string removes the line |
+| `--remote <remote>` | sets `remote`; an empty string clears it |
 | `--problem-title <text>`, `--proposal-title <text>`, `--decision-title <text>` | replaces the heading declaration and the corresponding heading line in the body |
 | `--problem <text>`, `--proposal <text>`, `--decision <text>` | **replaces the whole** section with the given text |
 | `-` | reads new content for the three sections from stdin |
@@ -229,12 +242,19 @@ Array fields (`fixed_in`, `labels`):
 - A replacement list must not contain duplicates; otherwise it is a usage error.
 - The add and remove options may be repeated, with the same effect as one joined list. Added elements are appended in the given order. Adding an existing element or removing a missing one is not an error.
 - Replacing a field and adding to or removing from the same field in one call is a usage error.
-- When `labels` becomes empty, its line is removed; an empty `fixed_in` is written `[]`.
+- An empty list is written `[]`.
+
+Closing time (`closed`):
+
+- From an active status to a closed status: the value of `closed` is set to the current UTC time, in milliseconds.
+- From one closed status to another (for example `fixed` → `wontfix`), or to the same status: the value is kept.
+- From a closed status to an active status: the value is cleared; the `closed:` line stays.
+- `--closed <time>` replaces the value that would otherwise be set or kept. `<time>` must be in the format of `opened`; otherwise it is a usage error. Giving `--closed` when the status after the modification is active is a usage error. An empty string is not accepted.
 
 Heading declarations:
 
 - The value is written like `title` and must not be empty; otherwise it is a usage error.
-- When the file has no declarations, all three are written; those not given take their defaults. Callers are encouraged to give all three.
+- When the declarations in the file are empty, all three are set; those not given take their defaults. Callers are encouraged to give all three.
 - The corresponding heading line in the body is rewritten as `## <text>`.
 
 Section content:
@@ -272,8 +292,7 @@ General rules:
 - `id` and `opened` cannot be modified.
 - The target file must first pass every error check of `check`; otherwise the modification is refused (exit code 1, errors listed), so that a damaged file is not written further.
 - The result must also pass every error check of `check`, for example the three heading declarations must differ from each other and must not be `Discussion`; otherwise nothing is written (exit code 1, errors listed).
-- Only lines that need to change are changed; unchanged lines and extra sections stay byte for byte the same; changing a value keeps the end-of-line comment; heading lines stay unchanged unless their declaration changes. Removing a key removes its line.
-- A key that is added (`labels`, `remote`, the heading declarations) is written without a comment, right after the last existing key that precedes it in the recommended order of section 3.3; when there is none, at the end of the front matter.
+- Only lines that need to change are changed; unchanged lines and extra sections stay byte for byte the same; changing a value keeps the end-of-line comment; heading lines stay unchanged unless their declaration changes. Keys are never added or removed: clearing a value leaves the line as `<key>:` (or `[]` for a list), with its comment.
 - The modification is atomic: either all options take effect or none does. The result is written to a temporary file in the issues directory and then replaces the original; when changing the slug and the new file name already exists, it is an error, exit code 1, and nothing is changed.
 - stdout: the file name after the modification (the new name after a slug change).
 
@@ -285,8 +304,9 @@ Errors:
 
 - Encoding: a BOM or a CR.
 - The file name does not follow section 3.2; two files share an id.
-- The front matter structure does not follow section 3.3: missing keys, duplicate keys, unknown keys, invalid values; only some of the three heading declarations present, or a declaration that is empty, equal to another one, or `Discussion`.
+- The front matter structure does not follow section 3.3: missing keys, duplicate keys, unknown keys, invalid values; only some of the three heading declarations set, or a declaration equal to another one or to `Discussion`.
 - The id cannot be derived from `opened`, or does not equal the first 8 characters of the file name.
+- `closed` is empty while the status is a closed status, has a value while the status is an active status, or is earlier than `opened`.
 - `remote` is malformed, or the same remote appears in several files.
 - The body structure does not follow section 3.4, including first three level-2 headings that differ from the declared heading text or are out of order, or another level-2 heading inserted before or between the three sections. The message suggests using a level-3 heading instead.
 - `template.md` produces invalid content after placeholder replacement.
@@ -312,6 +332,7 @@ A single issue object:
   "slug": "start-partial-failure",
   "file": "issues/ggkpa773-start-partial-failure.md",
   "opened": "2026-10-18T00:03:31.121Z",
+  "closed": null,
   "title": "Start fails when one server cannot bind",
   "status": "accepted",
   "fixed_in": [],
@@ -330,7 +351,7 @@ A single issue object:
 }
 ```
 
-- `file` is the path relative to the project root, separated by `/`. When the `labels` line is omitted, `labels` is `[]`; when the `remote` line is omitted, `remote` is `null`; without heading declarations, `section_titles` holds the English defaults.
+- `file` is the path relative to the project root, separated by `/`. An empty `closed` or `remote` is `null`; an empty `title` is `""`; when the heading declarations are empty, `section_titles` holds the English defaults.
 - `show --json` / `new --json`: `{"schema_version": 1, "issue": <object>}`.
 - `list --json`: `{"schema_version": 1, "issues": [<object>...]}`, objects without `sections`.
 - `check --json`: `{"schema_version": 1, "findings": [{"file": ..., "level": "error"|"warning", "message": ...}]}`.
@@ -382,6 +403,7 @@ Field mapping:
 | `created_at` | `opened`. GitHub has second precision, so milliseconds are 0 |
 | `title` | `title` |
 | `state` / `state_reason` | `open` → `open`; `closed` with reason `completed` or no reason → `fixed`; `not_planned` → `wontfix`; `duplicate` → `rejected` |
+| `closed_at` | `closed`; empty for open issues. Milliseconds are 0 |
 | `labels` | `labels`. Names are converted with the slug conversion rule below; labels that become empty are dropped with a warning on stderr |
 | Repository and number | `remote`: the issue page URL returned by the API (`html_url`), of the form `https://github.com/<owner>/<repo>/issues/<number>` |
 | Issue body and all comments | the extra section `## Discussion` (section 10.5) |
@@ -400,7 +422,7 @@ Field mapping:
 - The rest of the file (front matter, the three sections, other extra sections before `## Discussion`) stays byte for byte the same.
 - Because it is regenerated as a whole every time, no sync progress has to be recorded; comments added, edited or deleted on GitHub are all reflected. The increment shows up in git diff: content identical to the previous version produces no difference.
 - When the result equals the existing content, the file is not written.
-- When the title, status or labels on GitHub differ from the local ones, this is only reported on stderr and the local fields are not changed: the local file is the authoritative source.
+- When the title, status, closing time or labels on GitHub differ from the local ones, this is only reported on stderr and the local fields are not changed: the local file is the authoritative source.
 - The target file must first pass every error check of `issue check`; otherwise it is skipped with an error. When an issue no longer exists on GitHub or is not accessible, an error is reported and the remaining issues are still processed; the exit code is 1 at the end.
 - stdout: one line per modified file, its file name.
 
@@ -447,6 +469,7 @@ The heading text is fixed as `## Discussion`, independent of the template's lang
   - All behavior of `new`, matching the checks in section 7 of `spec-create-issue.md`.
   - Filtering and sorting in `list`, and its behavior with a damaged file.
   - The three outputs of `show`.
+  - `closed` in `modi`: set on active → closed, kept on closed → closed, cleared on closed → active, overridden by `--closed`, and the usage errors of `--closed`.
   - Atomicity of `modi`: when any option fails, the file stays byte for byte the same; likewise on a slug rename collision.
   - After `modi`, the file still passes `check`, and unchanged lines are byte for byte the same.
   - The reporting and exit code of `check` for every kind of error and warning.
