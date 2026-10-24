@@ -363,7 +363,10 @@ A single issue object:
 - `issue` only works on the files in the current working directory; it neither knows nor checks the current branch. Which branch it runs on is the user's responsibility.
 - `issue` never calls git and never commits. When to commit is decided by people or third parties.
 - The issue file in each commit is the issue's statement at that point in time. To see how an issue evolved: `git log --follow -p -- issues/<id>-<slug>.md`. Changing the slug is a file rename that git's rename detection follows; the id is the stable lookup key.
-- When a statement changes, it is recommended to commit the issue file change on its own, or together with the code that implements it, to keep history readable. The commit message format is outside this specification.
+- When a statement changes, it is recommended to commit the issue file change on its own, or together with the code that implements it, to keep history readable. The commit message format is outside this specification, except for issue references below.
+- **Issue references in commit messages**: a commit message that refers to an issue must write it as `issue#<id>` with the full 8-character id, for example `issue#2kn5yrqz`. The prefix forms of `<ref>` (section 6.1) are for CLI arguments only and must not be used in commit messages:
+  - a prefix only identifies an issue against the issues directory at the moment a command runs and may become ambiguous as issues are added, while a commit message is permanent;
+  - on hosting platforms a digits-only form such as `#30` may be auto-linked to an unrelated platform issue, or even close it when preceded by a keyword such as `fixes`.
 - `fixed_in` is backfilled by the version commit process with `issue modi --add-fixed-in`.
 
 ## 9. Boundary with third parties
