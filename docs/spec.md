@@ -79,7 +79,6 @@ opened: <opened>
 closed: <closed>
 title: <title>
 status: <status>
-fixed_in: [<commit>, ...]
 labels: [<label>, ...]
 remote: <remote>
 problem_title: <text>
@@ -90,14 +89,13 @@ decision_title: <text>
 
 - Key names are always identifiers (lowercase letters, digits and underscores). One key per line; no duplicate keys, no other keys, no blank lines, no comment lines. The order of keys does not affect parsing.
 - Each value may be followed by a YAML end-of-line comment (whitespace followed by `#` up to the end of the line). When `issue` changes a value, it keeps that line's comment.
-- An empty value means the field is not in effect. A scalar field with an empty value is written `<key>:` with nothing after the colon (a YAML null); a list field with no elements is written `[]`. Only `closed`, `title` and `remote` may be empty; `fixed_in` and `labels` may be `[]`.
+- An empty value means the field is not in effect. A scalar field with an empty value is written `<key>:` with nothing after the colon (a YAML null); a list field with no elements is written `[]`. Only `closed`, `title` and `remote` may be empty; `labels` may be `[]`.
 - The front matter must be valid YAML and use only the subset defined below, so that third parties get the same result with any YAML parser:
   - `id`: 8 characters, alphabet as in section 4.
   - `opened`: `YYYY-MM-DDTHH:MM:SS.fffZ`, UTC, exactly three fractional digits.
   - `closed`: the time the issue entered a closed status, in the same format as `opened`. The key is always present; its value is empty (`closed:`, a YAML null) while `status` is an active status, and is a time while `status` is a closed status. The time must not be earlier than `opened`. `issue modi` maintains it (section 6.5).
   - `title`: a single line of text, may be empty. On read, a YAML plain scalar or a double-quoted string (JSON escape rules) is accepted. On write, it is written as a plain scalar when all of the following hold, and as a double-quoted string otherwise: the first character is not one of `` -?:,[]{}#&*!|>'"%@` ``; it contains neither `: ` nor ` #`; it has no leading or trailing whitespace. Single-quoted strings are not supported.
   - `status`: one of `open`, `accepted`, `fixed`, `rejected`, `wontfix`.
-  - `fixed_in`: a flow sequence of commit IDs of 7 to 40 lowercase hexadecimal digits, without duplicates. An empty list is written `[]`.
   - `labels`: a flow sequence of elements that follow the slug rule, without duplicates, in insertion order.
   - `remote`: the issue's counterpart on a remote platform; empty when there is none. Otherwise the value is its full URL, `https://github.com/<owner>/<repo>/issues/<number>`, for example `https://github.com/serialport/node-serialport/issues/3149`. Only GitHub is supported as a remote for now: the scheme must be `https`, the host must be `github.com`, and there is no trailing `/`, query or `#` fragment. `<owner>` consists of ASCII letters, digits and hyphens; `<repo>` consists of ASCII letters, digits, `.`, `_` and `-`; `<number>` is a positive integer without a leading 0. The same remote must not appear in two issue files; `<owner>` and `<repo>` are compared case-insensitively. `remote` is only data: `issue` never accesses it.
   - `problem_title`, `proposal_title`, `decision_title`: the heading text of the three sections (the part after `## `), written like `title`. They are the only optional keys: either all three are absent, and the headings are the defaults `Problem`, `Proposal` and `Decision`, or all three are present with non-empty values. A present declaration must not be empty, must differ from the other two and must not be `Discussion` (section 10.5).
@@ -122,7 +120,6 @@ opened: 2026-10-18T00:03:31.121Z
 closed:
 title: Start fails when one server cannot bind
 status: accepted        # open | accepted | fixed | rejected | wontfix
-fixed_in: []            # commit IDs, backfilled at version commit time
 labels: [startup]
 remote:
 ---
@@ -149,7 +146,6 @@ opened: 2026-10-17T23:58:07.000Z
 closed:
 title: 块的 offset 没有要求偶数
 status: open
-fixed_in: []
 labels: []
 remote:
 problem_title: 问题描述
@@ -225,7 +221,6 @@ Modifies one issue. At least one option or `-` is required; otherwise it is a us
 | `--status <status>` | replaces `status`; no transition order is enforced; `closed` follows the status (see below) |
 | `--closed <time>` | sets `closed`, to correct the recorded closing time |
 | `--slug <slug>` | changes the slug in the file name; the id stays |
-| `--fixed-in <list>`, `--add-fixed-in <list>`, `--remove-fixed-in <list>` | replaces `fixed_in`, or adds or removes elements |
 | `--labels <list>`, `--add-labels <list>`, `--remove-labels <list>` | replaces `labels`, or adds or removes elements |
 | `--remote <remote>` | sets `remote`; an empty string clears it |
 | `--problem-title <text>`, `--proposal-title <text>`, `--decision-title <text>` | replaces the heading declaration and the corresponding heading line in the body |
@@ -233,10 +228,10 @@ Modifies one issue. At least one option or `-` is required; otherwise it is a us
 | `--problem <text>`, `--proposal <text>`, `--decision <text>` | **replaces the whole** section with the given text |
 | `-` | reads new content for the three sections from stdin |
 
-Array fields (`fixed_in`, `labels`):
+Array field (`labels`):
 
 - `<list>`: elements separated by `,`, for example `--labels bug,ui`. Every element must follow the rule of its field (section 3.3); an empty element (`a,,b`, `a,`) is a usage error.
-- Only `--fixed-in` and `--labels` accept the empty string, which empties the list; for the add and remove options it is a usage error.
+- Only `--labels` accepts the empty string, which empties the list; for the add and remove options it is a usage error.
 - A replacement list must not contain duplicates; otherwise it is a usage error.
 - The add and remove options may be repeated, with the same effect as one joined list. Added elements are appended in the given order. Adding an existing element or removing a missing one is not an error.
 - Replacing a field and adding to or removing from the same field in one call is a usage error.
@@ -314,7 +309,6 @@ Warnings (do not affect the exit code):
 
 - `title` is empty.
 - The status is `accepted` or a closed status, but decision is empty.
-- The status is not `fixed`, but `fixed_in` is not empty.
 - The issues directory contains entries other than issue files and `template.md`.
 
 Output: one line per finding, `<file>: error|warning: <message>`. The exit code is 1 if there is any error, otherwise 0. Suitable for a pre-commit hook or CI.
@@ -334,7 +328,6 @@ A single issue object:
   "closed": null,
   "title": "Start fails when one server cannot bind",
   "status": "accepted",
-  "fixed_in": [],
   "labels": ["startup"],
   "remote": "https://github.com/example/server/issues/42",
   "section_titles": {
@@ -363,10 +356,14 @@ A single issue object:
 - `issue` never calls git and never commits. When to commit is decided by people or third parties.
 - The issue file in each commit is the issue's statement at that point in time. To see how an issue evolved: `git log --follow -p -- issues/<id>-<slug>.md`. Changing the slug is a file rename that git's rename detection follows; the id is the stable lookup key.
 - When a statement changes, it is recommended to commit the issue file change on its own, or together with the code that implements it, to keep history readable. The commit message format is outside this specification, except for issue references below.
-- **Issue references in commit messages**: a commit message that refers to an issue must write it as `issue#<id>` with the full 8-character id, for example `issue#2kn5yrqz`. The prefix forms of `<ref>` (section 6.1) are for CLI arguments only and must not be used in commit messages:
+- **Issue references in commit messages**: a commit message refers to an issue with one of two markers, always with the full 8-character id:
+  - `fixissue#<id>`, for example `fixissue#2kn5yrqz`: the commit fixes the issue;
+  - `issue#<id>`, for example `issue#2kn5yrqz`: the commit concerns the issue without fixing it.
+- Both markers are written exactly as shown: lowercase, without a space. `fixissue` is a single word so that it is not matched in ordinary prose (such as "does not fix issue#..."), is not split by line wrapping, and has only one spelling. Because `fixissue#<id>` contains `issue#<id>`, searching for `issue#<id>` finds every commit related to the issue, and searching for `fixissue#<id>` finds the commits that fix it.
+- The prefix forms of `<ref>` (section 6.1) are for CLI arguments only and must not be used in commit messages:
   - a prefix only identifies an issue against the issues directory at the moment a command runs and may become ambiguous as issues are added, while a commit message is permanent;
   - on hosting platforms a digits-only form such as `#30` may be auto-linked to an unrelated platform issue, or even close it when preceded by a keyword such as `fixes`.
-- `fixed_in` is backfilled by the version commit process with `issue modi --add-fixed-in`.
+- **Fixing commits are not recorded in the issue file**: the commit messages are the source of truth for which commits fix an issue. A commit cannot contain its own commit ID, so a list of commit IDs in the issue file could only be backfilled by a later commit, and history rewrites such as rebase and squash would invalidate it; the markers in commit messages survive both. To list the fixing commits: `git log --grep="fixissue#<id>"`. Showing them together with an issue is left to companion tools or third parties that call git (section 14).
 
 ## 9. Boundary with third parties
 
@@ -410,7 +407,6 @@ Field mapping:
 | Repository and number | `remote`: the issue page URL returned by the API (`html_url`), of the form `https://github.com/<owner>/<repo>/issues/<number>` |
 | Issue body and all comments | the extra section `## Discussion` (section 10.5) |
 
-- `fixed_in` is `[]`.
 - Slug conversion rule: lowercase; replace every character other than ASCII letters and digits with a hyphen; collapse consecutive hyphens; strip leading and trailing hyphens; when longer than 60 characters, cut at a hyphen. When the slug converted from `title` is empty (for example a title entirely in Chinese), use `gh-<number>`.
 - The three sections are generated from the template (section 5) and left as the template has them; **their content is not filled in**.
 - The id is computed from `opened`. Issues are processed in ascending GitHub issue number; when the id collides with an existing file, the bump rule adds 1 ms and retries.
@@ -490,7 +486,7 @@ The heading text is fixed as `## Discussion`, independent of the template's lang
 
 ## 14. Out of scope
 
-GUIs and web UIs; discussion, comments, notifications; users, permissions and assignees; priorities, milestones, dependencies between issues; full-text search; a delete command (use `git rm`, or set the status to `rejected` / `wontfix`); any git operation; writing back to GitHub; syncing anything other than `## Discussion` (title, status, labels); remotes other than GitHub; importing pull requests; localization of command-line messages.
+GUIs and web UIs; discussion, comments, notifications; users, permissions and assignees; priorities, milestones, dependencies between issues; full-text search; a delete command (use `git rm`, or set the status to `rejected` / `wontfix`); any git operation; writing back to GitHub; syncing anything other than `## Discussion` (title, status, labels); remotes other than GitHub; importing pull requests; listing or showing the commits that reference an issue (section 8); localization of command-line messages.
 
 ## 15. Open questions
 
@@ -503,6 +499,6 @@ To be settled before the specification is final:
 5. Whether unknown keys in the front matter are errors (the current design) or warnings, to allow extension.
 6. Whether `issue edit <ref>` is needed: open the file in `$EDITOR` and run `check` automatically after saving.
 7. Whether `issue-github` is a good name for the companion tool, or whether it should be published as a repository separate from `issue`.
-8. Whether mapping a GitHub issue that is `closed` with reason `completed` to `fixed` is right: it was closed on GitHub, but this repository may have no corresponding `fixed_in`.
+8. Whether mapping a GitHub issue that is `closed` with reason `completed` to `fixed` is right: it was closed on GitHub, but this repository may have no commit marked `fixissue#<id>` for it.
 9. Whether the heading text `## Discussion` stays fixed in English or can be set with an option.
 10. When `sync` finds that the status on GitHub differs from the local one, whether an option should write it to the local file, or whether it only ever reports.

@@ -77,7 +77,6 @@ opened: {{opened}}
 closed:
 title:
 status: open        # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
 labels: []
 remote:
 ---
@@ -154,4 +153,4 @@ Three files:
 
 ## 9. Out of scope
 
-A `list` command, id-prefix resolution, slug generation from a title, renaming slugs, validation of existing issue files, status changes, `fixed_in` backfill, git operations, and edits to skills or `AGENTS.md`.
+A `list` command, id-prefix resolution, slug generation from a title, renaming slugs, validation of existing issue files, status changes, git operations, and edits to skills or `AGENTS.md`.

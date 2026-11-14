@@ -6,7 +6,7 @@
 
 ### 动机
 
-本方案的目的，是在项目的源文件中包含一套轻量的 issue 处理机制，并让它成为 issue 的唯一数据源（source of truth），使项目文件本身更完整。
+本方案的目的，是在项目的源文件中包含一套轻量的 issue 处理机制，并让它成为 issue 的唯一权威来源（source of truth），使项目文件本身更完整。
 
 GitHub 等平台的 issue 功能虽然完善，但 issue 存放在网站上，离开平台就无法访问，项目本身的文件中也看不到它们：克隆下来的仓库里看不出存在哪些问题、做过哪些裁定，迁移平台时还需要另行导出。把 issue 作为文件放进仓库，issue 就随代码一起被克隆、分支、合并和审阅，并与代码共享同一份 git 历史；平台或第三方工具只作为可选的展示层和讨论场所。
 
@@ -23,7 +23,7 @@ GitHub 等平台的 issue 功能虽然完善，但 issue 存放在网站上，�
 
 一个轻量但完整的、基于文件和命令行的问题与决定记录系统：
 
-- issue 以 Markdown 文件的形式存放在项目的 `issues/` 目录中，随代码一起纳入 git。**文件就是唯一的数据源**，不存在另一个数据库，也不存在“渲染产物”。
+- issue 以 Markdown 文件的形式存放在项目的 `issues/` 目录中，随代码一起纳入 git。**文件就是唯一的权威来源**，不存在另一个数据库，也不存在“渲染产物”。
 - 命令行程序 `issue`（Rust 实现）负责新建、列出、查看、修改和校验 issue，并以 JSON 形式向第三方提供结构化数据。
 - issue 文件只记录**当前**的表述；表述随时间的变化由 git 历史体现。
 - GUI、WebUI、讨论本身及其原始存档都由第三方实现，不在本系统内。
@@ -79,7 +79,6 @@ opened: <opened>
 closed: <closed>
 title: <title>
 status: <status>
-fixed_in: [<commit>, ...]
 labels: [<label>, ...]
 remote: <remote>
 problem_title: <text>
@@ -90,14 +89,13 @@ decision_title: <text>
 
 - 键名一律使用标识符形式（小写字母、数字和下划线）。每个键一行，不允许重复的键、其他键、空行或注释行。键的顺序不影响解析。
 - 每行的值之后可以有 YAML 行尾注释（空白后接 `#` 直到行尾）。`issue` 修改某个值时保留该行的注释。
-- 空值表示该字段未生效。标量字段的空值写作 `<key>:`，冒号后不写任何内容（即 YAML 的 null）；没有元素的列表字段写作 `[]`。只有 `closed`、`title`、`remote` 可以为空；`fixed_in` 和 `labels` 可以是 `[]`。
+- 空值表示该字段未生效。标量字段的空值写作 `<key>:`，冒号后不写任何内容（即 YAML 的 null）；没有元素的列表字段写作 `[]`。只有 `closed`、`title`、`remote` 可以为空；`labels` 可以是 `[]`。
 - front matter 必须是合法 YAML，且只使用下面规定的子集，以便第三方用任意 YAML 解析器得到同样的结果：
   - `id`：8 个字符，字母表见第 4 节。
   - `opened`：`YYYY-MM-DDTHH:MM:SS.fffZ`，UTC，恰好三位小数。
   - `closed`：issue 进入关闭状态的时间，格式同 `opened`。这个键始终存在；`status` 为活动状态时值为空（`closed:`，即 YAML 的 null），为关闭状态时值为时间。时间不得早于 `opened`。由 `issue modi` 维护（第 6.5 节）。
   - `title`：单行文本，可以为空。读取时接受 YAML 普通标量或双引号字符串（转义规则同 JSON）。写出时，满足以下全部条件就写成普通标量，否则写成双引号字符串：首字符不是 `` -?:,[]{}#&*!|>'"%@` `` 之一；不含 `: ` 和 ` #`；首尾没有空白。不支持单引号字符串。
   - `status`：`open`、`accepted`、`fixed`、`rejected`、`wontfix` 之一。
-  - `fixed_in`：流式列表，元素为 7 到 40 位小写十六进制提交 ID，不重复。空列表写作 `[]`。
   - `labels`：流式列表，元素符合 slug 规则，不重复，保持写入顺序。
   - `remote`：该 issue 在远程平台上的对应条目；没有时为空，否则值为该条目的完整 URL：`https://github.com/<owner>/<repo>/issues/<number>`，例如 `https://github.com/serialport/node-serialport/issues/3149`。目前只支持 GitHub 这一个 remote，协议必须是 `https`，主机必须是 `github.com`，末尾不带 `/`、查询参数或 `#` 片段。`<owner>` 由 ASCII 字母、数字和连字符组成；`<repo>` 由 ASCII 字母、数字、`.`、`_`、`-` 组成；`<number>` 为不以 0 开头的正整数。同一个 remote 不能出现在两个 issue 文件中，比较 `<owner>` 和 `<repo>` 时不区分大小写。`remote` 只是数据，`issue` 从不访问它。
   - `problem_title`、`proposal_title`、`decision_title`：三段正文的标题文字（`## ` 之后的部分），写法同 `title`。它们是仅有的可选键：要么三个键都不出现，此时标题分别取缺省值 `Problem`、`Proposal`、`Decision`；要么三个键都出现且值都不为空。出现的声明不得为空，三者不能彼此相同，也不能是 `Discussion`（第 10.5 节）。
@@ -122,7 +120,6 @@ opened: 2026-10-18T00:03:31.121Z
 closed:
 title: Start fails when one server cannot bind
 status: accepted        # open | accepted | fixed | rejected | wontfix
-fixed_in: []            # commit IDs, backfilled at version commit time
 labels: [startup]
 remote:
 ---
@@ -149,7 +146,6 @@ opened: 2026-10-17T23:58:07.000Z
 closed:
 title: 块的 offset 没有要求偶数
 status: open
-fixed_in: []
 labels: []
 remote:
 problem_title: 问题描述
@@ -225,7 +221,6 @@ issue [-C <dir>] <command> [args]
 | `--status <status>` | 替换 `status`；不强制状态迁移顺序；`closed` 随状态变化（见下文） |
 | `--closed <time>` | 设置 `closed`，用于更正记录的关闭时间 |
 | `--slug <slug>` | 修改文件名中的 slug，id 不变 |
-| `--fixed-in <list>`，`--add-fixed-in <list>`，`--remove-fixed-in <list>` | 替换 `fixed_in`，或增删其中的元素 |
 | `--labels <list>`，`--add-labels <list>`，`--remove-labels <list>` | 替换 `labels`，或增删其中的元素 |
 | `--remote <remote>` | 设置 `remote`；传空字符串即清空 |
 | `--problem-title <text>`，`--proposal-title <text>`，`--decision-title <text>` | 替换标题声明，并同时替换正文中对应的标题行 |
@@ -233,10 +228,10 @@ issue [-C <dir>] <command> [args]
 | `--problem <text>`，`--proposal <text>`，`--decision <text>` | 用给定文本**整体替换**该段落 |
 | `-` | 从 stdin 读取三段正文的新内容 |
 
-数组字段（`fixed_in`、`labels`）：
+数组字段（`labels`）：
 
 - `<list>`：元素之间用 `,` 分隔，例如 `--labels bug,ui`。每个元素都必须符合该字段的规则（第 3.3 节）；出现空元素（`a,,b`、`a,`）属于用法错误。
-- 只有 `--fixed-in` 和 `--labels` 接受空字符串，表示清空列表；增删选项传空字符串属于用法错误。
+- 只有 `--labels` 接受空字符串，表示清空列表；增删选项传空字符串属于用法错误。
 - 替换用的列表中不得有重复元素，否则属于用法错误。
 - 增删选项可重复，效果等同于合并成一个列表。增加的元素按给出的顺序追加到末尾。增加已有元素、删除不存在的元素都不算错误。
 - 同一次调用中，对同一字段既替换又增删，属于用法错误。
@@ -314,7 +309,6 @@ EOF
 
 - `title` 为空。
 - 状态为 `accepted` 或关闭状态，但 decision 为空。
-- 状态不是 `fixed`，但 `fixed_in` 不为空。
 - issues 目录中有 issue 文件和 `template.md` 之外的条目。
 
 输出：每条发现一行，`<file>: error|warning: <message>`。有任何错误时退出码 1，否则为 0。适合放进 pre-commit 钩子或 CI。
@@ -334,7 +328,6 @@ EOF
   "closed": null,
   "title": "Start fails when one server cannot bind",
   "status": "accepted",
-  "fixed_in": [],
   "labels": ["startup"],
   "remote": "https://github.com/example/server/issues/42",
   "section_titles": {
@@ -363,10 +356,14 @@ EOF
 - `issue` 从不调用 git，也从不提交。何时提交由人或第三方决定。
 - 每一个提交中的 issue 文件，就是该 issue 在那个时间点的阶段性表述。查看一个 issue 的演变：`git log --follow -p -- issues/<id>-<slug>.md`。改 slug 是文件重命名，git 的重命名检测能跟踪；id 是稳定的检索键。
 - 修改表述时，建议让 issue 文件的改动独立成提交，或与实现它的代码放在同一个提交中，使历史保持可读。除下面的 issue 引用外，提交信息的格式不在本规格范围内。
-- **提交信息中的 issue 引用**：提交信息引用 issue 时，必须写作 `issue#<id>`，使用完整的 8 位 id，例如 `issue#2kn5yrqz`。`<ref>` 的前缀形式（第 6.1 节）只用于命令行参数，不得用于提交信息：
+- **提交信息中的 issue 引用**：提交信息用以下两种标记之一引用 issue，一律使用完整的 8 位 id：
+  - `fixissue#<id>`，例如 `fixissue#2kn5yrqz`：该提交修复这个 issue；
+  - `issue#<id>`，例如 `issue#2kn5yrqz`：该提交与这个 issue 相关，但不是修复。
+- 两种标记都必须严格按上面的写法：小写，不带空格。`fixissue` 写成一个词，是为了不在普通语句中被误匹配（例如 "does not fix issue#..."），不被自动折行拆开，并且只有一种拼写。由于 `fixissue#<id>` 包含 `issue#<id>`，搜索 `issue#<id>` 得到与该 issue 相关的全部提交，搜索 `fixissue#<id>` 得到修复它的提交。
+- `<ref>` 的前缀形式（第 6.1 节）只用于命令行参数，不得用于提交信息：
   - 前缀只在命令运行时相对当时的 issues 目录确定一个 issue，随着 issue 增多可能变得有歧义，而提交信息是永久的；
   - 在托管平台上，`#30` 这样的纯数字形式可能被自动链接到无关的平台 issue，前面带 `fixes` 等关键词时甚至会关闭它。
-- `fixed_in` 的回填由版本提交流程使用 `issue modi --add-fixed-in` 完成。
+- **issue 文件不记录修复提交**：哪些提交修复了一个 issue，其权威来源是提交信息。提交无法包含自身的提交 ID，因此在 issue 文件中记录提交 ID 列表，只能由之后的提交回填，而且 rebase、squash 等改写历史的操作会使它失效；提交信息中的标记则在这两种情况下都会保留。列出修复提交：`git log --grep="fixissue#<id>"`。把修复提交与 issue 一并显示，由调用 git 的配套工具或第三方负责（第 14 节）。
 
 ## 9. 与第三方的边界
 
@@ -410,7 +407,6 @@ EOF
 | 仓库与编号 | `remote`：API 返回的 issue 页面 URL（`html_url`），形如 `https://github.com/<owner>/<repo>/issues/<number>` |
 | issue 正文和全部评论 | 附加段落 `## Discussion`（第 10.5 节） |
 
-- `fixed_in` 为 `[]`。
 - slug 转换规则：转为小写，ASCII 字母和数字以外的字符替换为连字符，合并连续的连字符，去掉首尾的连字符；超过 60 个字符时在连字符处截断。由 `title` 转换得到的 slug 为空时（例如标题全是中文），使用 `gh-<number>`。
 - 三段正文由模板（第 5 节）生成，保持模板原样，**不填写内容**。
 - id 由 `opened` 计算。按 GitHub issue 编号升序处理；id 与已有文件冲突时，按 bump 规则加 1 ms 后重试。
@@ -490,7 +486,7 @@ EOF
 
 ## 14. 范围外
 
-GUI 和 WebUI；讨论、评论、通知；用户、权限和指派人；优先级、里程碑、issue 之间的依赖；全文搜索；删除命令（用 `git rm`，或把状态改为 `rejected` / `wontfix`）；任何 git 操作；回写到 GitHub；同步 `## Discussion` 以外的任何内容（标题、状态、标签）；GitHub 以外的 remote；导入 pull request；命令行消息的本地化。
+GUI 和 WebUI；讨论、评论、通知；用户、权限和指派人；优先级、里程碑、issue 之间的依赖；全文搜索；删除命令（用 `git rm`，或把状态改为 `rejected` / `wontfix`）；任何 git 操作；回写到 GitHub；同步 `## Discussion` 以外的任何内容（标题、状态、标签）；GitHub 以外的 remote；导入 pull request；列出或显示引用某个 issue 的提交（第 8 节）；命令行消息的本地化。
 
 ## 15. 待定问题
 
@@ -503,6 +499,6 @@ GUI 和 WebUI；讨论、评论、通知；用户、权限和指派人；优先�
 5. front matter 中出现未知键时，按错误处理（目前的设计）还是按警告处理以便扩展。
 6. 是否需要 `issue edit <ref>`：用 `$EDITOR` 打开文件，保存后自动运行 `check`。
 7. 附加工具的名称 `issue-github` 是否合适，还是作为 `issue` 之外的另一个仓库发布。
-8. GitHub 上 `closed` 且原因为 `completed` 的 issue 映射为 `fixed` 是否合适：它在 GitHub 上被关闭，但在本仓库中未必有对应的 `fixed_in`。
+8. GitHub 上 `closed` 且原因为 `completed` 的 issue 映射为 `fixed` 是否合适：它在 GitHub 上被关闭，但在本仓库中未必有标记为 `fixissue#<id>` 的提交。
 9. 讨论经过段落的标题文字 `## Discussion` 是否固定为英文，还是允许通过选项指定。
 10. `sync` 发现 GitHub 上的状态与本地不一致时，是否需要一个选项把它写回本地，还是始终只提示。
